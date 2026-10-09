@@ -1,11 +1,10 @@
 """Entidades del dominio del sistema Book Manager.
 
-Cada entidad encapsula sus atributos y valida sus invariantes,
-aplicando herencia, propiedades y dataclasses según convenga.
+Cada entidad encapsula sus atributos y valida sus invariantes mediante
+atributos protegidos, propiedades y setters, aplicando herencia y relaciones entre objetos.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import date
 from typing import Any, Dict
 
@@ -115,15 +114,15 @@ class Libro(EntidadBase):
         isbn: str,
         titulo: str,
         autor: str,
-        editorial_id: int,
-        genero_id: int,
+        editorial: Editorial,
+        genero: Genero,
     ) -> None:
         super().__init__(id)
         self.isbn = isbn
         self.titulo = titulo
         self.autor = autor
-        self.editorial_id = editorial_id
-        self.genero_id = genero_id
+        self.editorial = editorial
+        self.genero = genero
 
     @property
     def isbn(self) -> str:
@@ -159,24 +158,32 @@ class Libro(EntidadBase):
         self._autor = valor
 
     @property
-    def editorial_id(self) -> int:
-        return self._editorial_id
+    def editorial(self) -> Editorial:
+        return self._editorial
 
-    @editorial_id.setter
-    def editorial_id(self, valor: int) -> None:
-        if valor <= 0:
-            raise ValueError("editorial_id inválido")
-        self._editorial_id = valor
+    @editorial.setter
+    def editorial(self, valor: Editorial) -> None:
+        if not isinstance(valor, Editorial):
+            raise TypeError("La editorial debe ser una instancia de Editorial")
+        self._editorial = valor
+
+    @property
+    def genero(self) -> Genero:
+        return self._genero
+
+    @genero.setter
+    def genero(self, valor: Genero) -> None:
+        if not isinstance(valor, Genero):
+            raise TypeError("El género debe ser una instancia de Genero")
+        self._genero = valor
+
+    @property
+    def editorial_id(self) -> int:
+        return self._editorial.id
 
     @property
     def genero_id(self) -> int:
-        return self._genero_id
-
-    @genero_id.setter
-    def genero_id(self, valor: int) -> None:
-        if valor <= 0:
-            raise ValueError("genero_id inválido")
-        self._genero_id = valor
+        return self._genero.id
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -184,42 +191,55 @@ class Libro(EntidadBase):
             "isbn": self.isbn,
             "titulo": self.titulo,
             "autor": self.autor,
-            "editorial_id": self.editorial_id,
-            "genero_id": self.genero_id,
+            "editorial_id": self.editorial.id,
+            "editorial": self.editorial.nombre,
+            "genero_id": self.genero.id,
+            "genero": self.genero.nombre,
         }
 
     def __str__(self) -> str:
-        return f"[{self.id}] {self.titulo} - {self.autor} (ISBN {self.isbn})"
+        return (
+            f"[{self.id}] {self.titulo} - {self.autor} "
+            f"(ISBN: {self.isbn}, Editorial: {self.editorial.nombre}, Género: {self.genero.nombre})"
+        )
 
 
 class Precio(EntidadBase):
     """Valor monetario asociado a un libro en una moneda determinada."""
 
-    def __init__(self, id: int, libro_id: int, moneda_id: int, monto: float) -> None:
+    def __init__(self, id: int, libro: Libro, moneda: Moneda, monto: float) -> None:
         super().__init__(id)
-        self.libro_id = libro_id
-        self.moneda_id = moneda_id
+        self.libro = libro
+        self.moneda = moneda
         self.monto = monto
 
     @property
-    def libro_id(self) -> int:
-        return self._libro_id
+    def libro(self) -> Libro:
+        return self._libro
 
-    @libro_id.setter
-    def libro_id(self, valor: int) -> None:
-        if valor <= 0:
-            raise ValueError("libro_id inválido")
-        self._libro_id = valor
+    @libro.setter
+    def libro(self, valor: Libro) -> None:
+        if not isinstance(valor, Libro):
+            raise TypeError("El libro debe ser una instancia de Libro")
+        self._libro = valor
+
+    @property
+    def moneda(self) -> Moneda:
+        return self._moneda
+
+    @moneda.setter
+    def moneda(self, valor: Moneda) -> None:
+        if not isinstance(valor, Moneda):
+            raise TypeError("La moneda debe ser una instancia de Moneda")
+        self._moneda = valor
+
+    @property
+    def libro_id(self) -> int:
+        return self._libro.id
 
     @property
     def moneda_id(self) -> int:
-        return self._moneda_id
-
-    @moneda_id.setter
-    def moneda_id(self, valor: int) -> None:
-        if valor <= 0:
-            raise ValueError("moneda_id inválido")
-        self._moneda_id = valor
+        return self._moneda.id
 
     @property
     def monto(self) -> float:
@@ -234,52 +254,111 @@ class Precio(EntidadBase):
     def to_dict(self) -> Dict[str, Any]:
         return {
             "id": self.id,
-            "libro_id": self.libro_id,
-            "moneda_id": self.moneda_id,
+            "libro_id": self.libro.id,
+            "libro": self.libro.titulo,
+            "moneda_id": self.moneda.id,
+            "moneda": self.moneda.codigo,
             "monto": self.monto,
         }
 
     def __str__(self) -> str:
         return (
-            f"ID={self.id} Libro ID={self.libro_id} "
-            f"Moneda ID={self.moneda_id} Monto={self.monto}"
+            f"ID={self.id} Libro={self.libro.titulo} "
+            f"Moneda={self.moneda.codigo} Monto={self.monto:.2f}"
         )
 
 
-@dataclass
 class Stock:
-    """Cantidad disponible de cada libro (clave: libro_id)."""
+    """Cantidad disponible de cada libro."""
 
-    libro_id: int
-    cantidad: int
+    def __init__(self, libro: Libro, cantidad: int) -> None:
+        self.libro = libro
+        self.cantidad = cantidad
 
-    def __post_init__(self) -> None:
-        if self.libro_id <= 0:
-            raise ValueError("libro_id inválido")
-        if self.cantidad < 0:
-            raise ValueError("La cantidad no puede ser negativa")
+    @property
+    def libro(self) -> Libro:
+        return self._libro
 
-    def to_dict(self) -> Dict[str, Any]:
-        return {"libro_id": self.libro_id, "cantidad": self.cantidad}
+    @libro.setter
+    def libro(self, valor: Libro) -> None:
+        if not isinstance(valor, Libro):
+            raise TypeError("El libro debe ser una instancia de Libro")
+        self._libro = valor
 
+    @property
+    def libro_id(self) -> int:
+        return self._libro.id
 
-@dataclass
-class CotizacionDolar:
-    """Registro histórico de cotización por tipo y fecha."""
+    @property
+    def cantidad(self) -> int:
+        return self._cantidad
 
-    tipo_id: int
-    fecha: date
-    valor: float
-
-    def __post_init__(self) -> None:
-        if self.tipo_id <= 0:
-            raise ValueError("tipo_id inválido")
-        if self.valor <= 0:
-            raise ValueError("La cotización debe ser mayor a cero")
+    @cantidad.setter
+    def cantidad(self, valor: int) -> None:
+        if not isinstance(valor, int) or valor < 0:
+            raise ValueError("La cantidad debe ser un entero no negativo")
+        self._cantidad = valor
 
     def to_dict(self) -> Dict[str, Any]:
         return {
-            "tipo_id": self.tipo_id,
+            "libro_id": self.libro.id,
+            "libro": self.libro.titulo,
+            "cantidad": self.cantidad,
+        }
+
+    def __str__(self) -> str:
+        return f"Libro ID={self.libro.id} ({self.libro.titulo}) - Stock={self.cantidad}"
+
+
+class CotizacionDolar:
+    """Registro histórico de cotización por tipo y fecha."""
+
+    def __init__(self, tipo: TipoCotizacion, fecha: date, valor: float) -> None:
+        self.tipo = tipo
+        self.fecha = fecha
+        self.valor = valor
+
+    @property
+    def tipo(self) -> TipoCotizacion:
+        return self._tipo
+
+    @tipo.setter
+    def tipo(self, valor: TipoCotizacion) -> None:
+        if not isinstance(valor, TipoCotizacion):
+            raise TypeError("El tipo debe ser una instancia de TipoCotizacion")
+        self._tipo = valor
+
+    @property
+    def tipo_id(self) -> int:
+        return self._tipo.id
+
+    @property
+    def fecha(self) -> date:
+        return self._fecha
+
+    @fecha.setter
+    def fecha(self, valor: date) -> None:
+        if not isinstance(valor, date):
+            raise TypeError("La fecha debe ser una instancia de date")
+        self._fecha = valor
+
+    @property
+    def valor(self) -> float:
+        return self._valor
+
+    @valor.setter
+    def valor(self, valor: float) -> None:
+        if valor <= 0:
+            raise ValueError("La cotización debe ser mayor a cero")
+        self._valor = float(valor)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "tipo_id": self.tipo.id,
+            "tipo": self.tipo.nombre,
             "fecha": self.fecha.isoformat(),
             "valor": self.valor,
         }
+
+    def __str__(self) -> str:
+        return f"Tipo={self.tipo.nombre} Fecha={self.fecha.isoformat()} Valor=${self.valor:.2f}"
