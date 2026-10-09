@@ -165,47 +165,74 @@ def cargar_datos_desde_csv(
     base = Path(base_dir)
 
     for row in _leer_csv(base / "genero.csv"):
-        service.alta_genero(Genero(int(row["id"]), row["nombre"]))
+        g_id = int(row["id"])
+        if service.genero_service.obtener_genero(g_id) is None:
+            service.alta_genero(Genero(g_id, row["nombre"]))
 
     for row in _leer_csv(base / "editorial.csv"):
-        service.alta_editorial(Editorial(int(row["id"]), row["nombre"]))
+        e_id = int(row["id"])
+        if service.editorial_service.obtener_editorial(e_id) is None:
+            service.alta_editorial(Editorial(e_id, row["nombre"]))
 
     for row in _leer_csv(base / "moneda.csv"):
-        service.alta_moneda(Moneda(int(row["id"]), row["codigo"], row["descripcion"]))
+        m_id = int(row["id"])
+        if service.moneda_service.obtener_moneda(m_id) is None:
+            service.alta_moneda(Moneda(m_id, row["codigo"], row["descripcion"]))
 
     for row in _leer_csv(base / "tipo_cotizacion.csv"):
-        service.alta_tipo_cotizacion(TipoCotizacion(int(row["id"]), row["nombre"]))
+        t_id = int(row["id"])
+        if service.tipo_cotizacion_service.obtener_tipo_cotizacion(t_id) is None:
+            service.alta_tipo_cotizacion(TipoCotizacion(t_id, row["nombre"]))
 
     for row in _leer_csv(base / "libro.csv"):
-        service.alta_libro(
-            Libro(
-                int(row["id"]),
-                row["isbn"],
-                row["titulo"],
-                row["autor"],
-                int(row["editorial_id"]),
-                int(row["genero_id"]),
-            )
-        )
+        l_id = int(row["id"])
+        if service.libro_service.obtener_libro(l_id) is None:
+            editorial = service.editorial_service.obtener_editorial(int(row["editorial_id"]))
+            genero = service.genero_service.obtener_genero(int(row["genero_id"]))
+            if editorial and genero:
+                service.alta_libro(
+                    Libro(
+                        l_id,
+                        row["isbn"],
+                        row["titulo"],
+                        row["autor"],
+                        editorial,
+                        genero,
+                    )
+                )
 
     for row in _leer_csv(base / "precio.csv"):
-        service.alta_precio(
-            Precio(
-                int(row["id"]),
-                int(row["libro_id"]),
-                int(row["moneda_id"]),
-                float(row["monto"]),
-            )
-        )
+        p_id = int(row["id"])
+        if service.precio_service.obtener_precio(p_id) is None:
+            libro = service.libro_service.obtener_libro(int(row["libro_id"]))
+            moneda = service.moneda_service.obtener_moneda(int(row["moneda_id"]))
+            if libro and moneda:
+                service.alta_precio(
+                    Precio(
+                        p_id,
+                        libro,
+                        moneda,
+                        float(row["monto"]),
+                    )
+                )
 
     for row in _leer_csv(base / "stock.csv"):
-        service.alta_stock(Stock(int(row["libro_id"]), int(row["cantidad"])))
+        libro_id = int(row["libro_id"])
+        if service.stock_service.obtener_stock(libro_id) is None:
+            libro = service.libro_service.obtener_libro(libro_id)
+            if libro:
+                service.alta_stock(Stock(libro, int(row["cantidad"])))
 
     for row in _leer_csv(base / "cotizacion_dolar.csv"):
-        service.alta_cotizacion(
-            CotizacionDolar(
-                int(row["tipo_id"]),
-                date.fromisoformat(row["fecha"]),
-                float(row["valor"]),
-            )
-        )
+        tipo_id = int(row["tipo_id"])
+        f_date = date.fromisoformat(row["fecha"])
+        if service.cotizacion_service.obtener_cotizacion(tipo_id, f_date) is None:
+            tipo = service.tipo_cotizacion_service.obtener_tipo_cotizacion(tipo_id)
+            if tipo:
+                service.alta_cotizacion(
+                    CotizacionDolar(
+                        tipo,
+                        f_date,
+                        float(row["valor"]),
+                    )
+                )

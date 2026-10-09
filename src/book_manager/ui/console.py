@@ -1,7 +1,8 @@
 """Interfaz de consola (CLI) del sistema Book Manager.
 
-Cada menú opera directamente sobre los CRUD del servicio de la librería,
-permitiendo listar, dar de alta, modificar y borrar cada entidad.
+Cada menú opera directamente sobre los servicios de la librería,
+permitiendo listar, dar de alta, modificar y borrar cada entidad
+con validación robusta y manejo de errores ante datos mal ingresados.
 """
 from __future__ import annotations
 
@@ -29,10 +30,31 @@ class ConsolaLibreria:
 
     # --------------------------- Utilidades de E/S ---------------------------
     def _leer_int(self, texto: str) -> int:
-        return int(input(texto).strip())
+        """Lee un entero por consola reintentando de forma segura ante errores."""
+        while True:
+            valor = input(texto).strip()
+            try:
+                return int(valor)
+            except ValueError:
+                print("Entrada inválida: debe ingresar un número entero.")
 
     def _leer_float(self, texto: str) -> float:
-        return float(input(texto).strip())
+        """Lee un flotante por consola reintentando de forma segura ante errores."""
+        while True:
+            valor = input(texto).strip()
+            try:
+                return float(valor)
+            except ValueError:
+                print("Entrada inválida: debe ingresar un número decimal válido.")
+
+    def _leer_fecha(self, texto: str) -> date:
+        """Lee una fecha en formato YYYY-MM-DD reintentando de forma segura."""
+        while True:
+            valor = input(texto).strip()
+            try:
+                return date.fromisoformat(valor)
+            except ValueError:
+                print("Formato de fecha inválido. Ingrese una fecha válida con formato AAAA-MM-DD.")
 
     def _pausa(self) -> None:
         input("\nEnter para continuar...")
@@ -114,14 +136,14 @@ class ConsolaLibreria:
             lambda: self.service.alta_moneda(
                 Moneda(
                     self._leer_int("ID: "),
-                    input("Código: "),
+                    input("Código (3 letras): "),
                     input("Descripción: "),
                 )
             ),
             lambda: self.service.modificar_moneda(
                 Moneda(
                     self._leer_int("ID: "),
-                    input("Código: "),
+                    input("Código (3 letras): "),
                     input("Descripción: "),
                 )
             ),
@@ -142,109 +164,131 @@ class ConsolaLibreria:
             self.service.listar_tipos_cotizacion,
         )
 
+    def _construir_libro_desde_input(self, id_existente: int | None = None) -> Libro:
+        libro_id = id_existente if id_existente is not None else self._leer_int("ID: ")
+        isbn = input("ISBN: ").strip()
+        titulo = input("Título: ").strip()
+        autor = input("Autor: ").strip()
+        editorial_id = self._leer_int("Editorial ID: ")
+        editorial = self.service.editorial_service.obtener_editorial(editorial_id)
+        if editorial is None:
+            raise ValueError(f"No existe la editorial con ID {editorial_id}")
+        genero_id = self._leer_int("Género ID: ")
+        genero = self.service.genero_service.obtener_genero(genero_id)
+        if genero is None:
+            raise ValueError(f"No existe el género con ID {genero_id}")
+        return Libro(
+            id=libro_id,
+            isbn=isbn,
+            titulo=titulo,
+            autor=autor,
+            editorial=editorial,
+            genero=genero,
+        )
+
     def menu_libros(self) -> None:
         self._menu_crud_basico(
             "Libros",
-            lambda: self.service.alta_libro(
-                Libro(
-                    self._leer_int("ID: "),
-                    input("ISBN: "),
-                    input("Título: "),
-                    input("Autor: "),
-                    self._leer_int("Editorial ID: "),
-                    self._leer_int("Género ID: "),
-                )
-            ),
-            lambda: self.service.modificar_libro(
-                Libro(
-                    self._leer_int("ID: "),
-                    input("ISBN: "),
-                    input("Título: "),
-                    input("Autor: "),
-                    self._leer_int("Editorial ID: "),
-                    self._leer_int("Género ID: "),
-                )
-            ),
+            lambda: self.service.alta_libro(self._construir_libro_desde_input()),
+            lambda: self.service.modificar_libro(self._construir_libro_desde_input()),
             lambda: self.service.eliminar_libro(self._leer_int("ID: ")),
             self.service.listar_libros,
         )
 
+    def _construir_precio_desde_input(self, id_existente: int | None = None) -> Precio:
+        precio_id = id_existente if id_existente is not None else self._leer_int("ID: ")
+        libro_id = self._leer_int("Libro ID: ")
+        libro = self.service.libro_service.obtener_libro(libro_id)
+        if libro is None:
+            raise ValueError(f"No existe el libro con ID {libro_id}")
+        moneda_id = self._leer_int("Moneda ID: ")
+        moneda = self.service.moneda_service.obtener_moneda(moneda_id)
+        if moneda is None:
+            raise ValueError(f"No existe la moneda con ID {moneda_id}")
+        monto = self._leer_float("Monto: ")
+        return Precio(id=precio_id, libro=libro, moneda=moneda, monto=monto)
+
     def menu_precios(self) -> None:
         self._menu_crud_basico(
             "Precios",
-            lambda: self.service.alta_precio(
-                Precio(
-                    self._leer_int("ID: "),
-                    self._leer_int("Libro ID: "),
-                    self._leer_int("Moneda ID: "),
-                    self._leer_float("Monto: "),
-                )
-            ),
-            lambda: self.service.modificar_precio(
-                Precio(
-                    self._leer_int("ID: "),
-                    self._leer_int("Libro ID: "),
-                    self._leer_int("Moneda ID: "),
-                    self._leer_float("Monto: "),
-                )
-            ),
+            lambda: self.service.alta_precio(self._construir_precio_desde_input()),
+            lambda: self.service.modificar_precio(self._construir_precio_desde_input()),
             lambda: self.service.eliminar_precio(self._leer_int("ID: ")),
             self.service.listar_precios,
         )
 
+    def _construir_stock_desde_input(self) -> Stock:
+        libro_id = self._leer_int("Libro ID: ")
+        libro = self.service.libro_service.obtener_libro(libro_id)
+        if libro is None:
+            raise ValueError(f"No existe el libro con ID {libro_id}")
+        cantidad = self._leer_int("Cantidad: ")
+        return Stock(libro=libro, cantidad=cantidad)
+
     def menu_stock(self) -> None:
         self._menu_crud_basico(
             "Stock",
-            lambda: self.service.alta_stock(
-                Stock(self._leer_int("Libro ID: "), self._leer_int("Cantidad: "))
-            ),
-            lambda: self.service.modificar_stock(
-                Stock(self._leer_int("Libro ID: "), self._leer_int("Cantidad: "))
-            ),
+            lambda: self.service.alta_stock(self._construir_stock_desde_input()),
+            lambda: self.service.modificar_stock(self._construir_stock_desde_input()),
             lambda: self.service.eliminar_stock(self._leer_int("Libro ID: ")),
             self.service.listar_stock,
         )
+
+    def _construir_cotizacion_desde_input(self) -> CotizacionDolar:
+        tipo_id = self._leer_int("Tipo ID: ")
+        tipo = self.service.tipo_cotizacion_service.obtener_tipo_cotizacion(tipo_id)
+        if tipo is None:
+            raise ValueError(f"No existe el tipo de cotización con ID {tipo_id}")
+        fecha = self._leer_fecha("Fecha (YYYY-MM-DD): ")
+        valor = self._leer_float("Valor: ")
+        return CotizacionDolar(tipo=tipo, fecha=fecha, valor=valor)
 
     def menu_cotizaciones(self) -> None:
         self._menu_crud_basico(
             "Cotizaciones",
             lambda: self.service.alta_cotizacion(
-                CotizacionDolar(
-                    self._leer_int("Tipo ID: "),
-                    date.fromisoformat(input("Fecha (YYYY-MM-DD): ").strip()),
-                    self._leer_float("Valor: "),
-                )
+                self._construir_cotizacion_desde_input()
             ),
             lambda: self.service.modificar_cotizacion(
-                CotizacionDolar(
-                    self._leer_int("Tipo ID: "),
-                    date.fromisoformat(input("Fecha (YYYY-MM-DD): ").strip()),
-                    self._leer_float("Valor: "),
-                )
+                self._construir_cotizacion_desde_input()
             ),
             lambda: self.service.eliminar_cotizacion(
                 self._leer_int("Tipo ID: "),
-                date.fromisoformat(input("Fecha (YYYY-MM-DD): ").strip()),
+                self._leer_fecha("Fecha (YYYY-MM-DD): "),
             ),
             self.service.listar_cotizaciones,
         )
 
     def menu_reportes(self) -> None:
-        print("\n1-Stock bajo\n2-Libros por género")
-        op = input("Opción: ").strip()
-        if op == "1":
-            minimo = self._leer_int("Mínimo: ")
-            for item in self.service.reporte_stock_bajo(minimo=minimo):
-                print(item)
-        elif op == "2":
-            reporte = self.service.reporte_libros_por_genero()
-            for genero, libros in reporte.items():
-                print(f"\n{genero}")
-                for libro in libros:
-                    print(f"- {libro.titulo}")
-        else:
-            print("Opción inválida")
-        self._pausa()
+        while True:
+            print("\n--- Reportes ---")
+            print("1. Stock bajo")
+            print("2. Libros agrupados por género")
+            print("0. Volver")
+            op = input("Opción: ").strip()
+            try:
+                if op == "1":
+                    minimo = self._leer_int("Mínimo de stock: ")
+                    items = self.service.reporte_stock_bajo(minimo=minimo)
+                    self._listar(f"Libros con stock <= {minimo}", items)
+                    self._pausa()
+                elif op == "2":
+                    reporte = self.service.reporte_libros_por_genero()
+                    print("\n--- Libros por género ---")
+                    if not reporte:
+                        print("Sin libros cargados")
+                    for genero, libros in reporte.items():
+                        print(f"\n{genero}:")
+                        for libro in libros:
+                            print(f"  - {libro.titulo} ({libro.autor})")
+                    self._pausa()
+                elif op == "0":
+                    return
+                else:
+                    print("Opción inválida")
+            except (ValueError, TypeError) as exc:
+                print(f"Error: {exc}")
+                self._pausa()
 
     # ------------------------------ Menú principal ---------------------------
     def ejecutar(self) -> None:
