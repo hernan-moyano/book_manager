@@ -1,20 +1,20 @@
-# Book Manager - Sprint 1
+# Book Manager - Sprint 2
 # Dependencias del proyecto.
 #
 # Requisito: Python >= 3.10
-# Validado con Python 3.14.3.
 #
-# Este proyecto NO tiene dependencias de terceros: se implementa unicamente
-# con la biblioteca estandar de Python. Por eso este archivo no declara
-# ningun paquete y "pip install -r requirements.txt" no instala nada.
+# ORM y conexion a la base de datos relacional (PostgreSQL/Supabase).
+SQLAlchemy>=2.0
 #
-# Modulos de la biblioteca estandar utilizados:
-#   abc         - interfaces abstractas de los repositorios.
-#   csv         - generacion e importacion de los CSV de migracion.
-#   dataclasses - entidades Stock y CotizacionDolar.
-#   datetime    - fechas de las cotizaciones.
-#   pathlib     - rutas de los archivos CSV de migracion.
-#   typing      - anotaciones de tipo (Generic, TypeVar, Optional, Dict...).
+# Driver de PostgreSQL para SQLAlchemy (Supabase usa PostgreSQL).
+psycopg2-binary>=2.9
+#
+# Carga de variables de entorno desde el archivo .env
+# (API_URL y DATABASE_URL).
+python-dotenv>=1.0
+#
+# Cliente HTTP para consultar la API de cotizaciones del dolar.
+requests>=2.31
 #
 # Instalacion:
 #   pip install -r requirements.txt

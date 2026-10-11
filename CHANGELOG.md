@@ -1,3 +1,9 @@
+[Ejercicio 01 - Sprint 2]
+- Creacion de la estructura del Sprint 2 (database, models y migrations/sql).
+- Actualizacion de requirements.txt con SQLAlchemy, psycopg2-binary, python-dotenv y requests.
+- Actualizacion de README.md con el objetivo y el contexto del Sprint 2 (PostgreSQL/Supabase).
+- Exclusion del archivo .env (credenciales) y del export de precios en .gitignore.
+
 [Ejercicio 07]
 - Creacion de main.py como punto de entrada del sistema.
 - Carga automatica de datos CSV y modo no interactivo para validar el notebook con Ejecutar todo.
