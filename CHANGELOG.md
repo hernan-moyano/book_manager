@@ -1,3 +1,6 @@
+[Ejercicio 03 - Sprint 2]
+- Context manager session_scope para transacciones (commit, rollback y cierre).
+
 [Ejercicio 02 - Sprint 2]
 - Clase ConexionDB con engine de SQLAlchemy, lectura del .env y PostgreSQL (Supabase).
 

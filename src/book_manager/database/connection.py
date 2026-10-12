@@ -4,7 +4,7 @@ Define la clase ``ConexionDB``, encargada de crear el engine de
 SQLAlchemy, administrar las sesiones y crear las tablas del esquema.
 La configuracion se lee del archivo ``.env`` (dotenv).
 
-La URL de conexion apunta a una base PostgreSQL.
+La URL de conexion es obligatoria y debe apuntar a una base PostgreSQL.
 """
 from __future__ import annotations
 
@@ -64,3 +64,24 @@ class ConexionDB:
         from book_manager.models.models import Base
 
         Base.metadata.create_all(self.engine)
+
+    # ---------------- Context manager de transacciones ----------------
+    @contextmanager
+    def session_scope(self) -> Iterator[Session]:
+        """Administra la transaccion de una sesion.
+
+        Confirma los cambios al salir con normalidad, revierte la
+        transaccion si se propaga una excepcion y cierra la sesion.
+
+        Yields:
+            Iterator[Session]: Sesion de SQLAlchemy activa.
+        """
+        sesion: Session = self.SessionFactory()
+        try:
+            yield sesion
+            sesion.commit()
+        except Exception:
+            sesion.rollback()
+            raise
+        finally:
+            sesion.close()
