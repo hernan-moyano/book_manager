@@ -1,3 +1,7 @@
+[Ejercicio 04 - Sprint 2]
+- Modelos ORM de las ocho tablas con sus tipos de datos, claves primarias y foraneas.
+- Relaciones entre libros, editoriales, generos, monedas y cotizaciones.
+
 [Ejercicio 03 - Sprint 2]
 - Context manager session_scope para transacciones (commit, rollback y cierre).
 
