@@ -1,3 +1,6 @@
+[Ejercicio 02 - Sprint 2]
+- Clase ConexionDB con engine de SQLAlchemy, lectura del .env y PostgreSQL (Supabase).
+
 [Ejercicio 01 - Sprint 2]
 - Creacion de la estructura del Sprint 2 (database, models y migrations/sql).
 - Actualizacion de requirements.txt con SQLAlchemy, psycopg2-binary, python-dotenv y requests.
