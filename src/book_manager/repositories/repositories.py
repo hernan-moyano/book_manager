@@ -1,17 +1,23 @@
 """Repositorios responsables de la persistencia de datos.
 
-Se definen las interfaces (contratos) de cada repositorio,
-sus implementaciones en memoria para tests y sus implementaciones
-persistentes en archivos CSV que sincronizan cada operación a disco.
+Se definen las interfaces (contratos) de cada repositorio y sus
+implementaciones sobre la base de datos PostgreSQL con SQLAlchemy, con
+el CRUD completo de cada entidad. Cada operacion abre y cierra su propia
+transaccion mediante ``ConexionDB.session_scope``.
+
+Las entidades del dominio se relacionan por objeto (no por id): al leer
+una fila se reconstruye la entidad completa con sus objetos asociados.
 """
 from __future__ import annotations
 
 import abc
-import csv
 import datetime
-from pathlib import Path
-from typing import Any, Dict, Generic, List, Optional, TypeVar
+from typing import Callable, Generic, List, Optional, TypeVar
 
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+
+from book_manager.database.connection import ConexionDB
 from book_manager.entities.entities import (
     CotizacionDolar,
     Editorial,
@@ -23,8 +29,26 @@ from book_manager.entities.entities import (
     Stock,
     TipoCotizacion,
 )
+from book_manager.models import models as modelos
 
 T = TypeVar("T", bound=EntidadBase)
+
+
+def _libro_entidad(fila: modelos.Libro) -> Libro:
+    """Convierte una fila ORM de libro en una entidad ``Libro`` por objeto."""
+    return Libro(
+        fila.id,
+        fila.isbn,
+        fila.titulo,
+        fila.autor,
+        Editorial(fila.editorial.id, fila.editorial.nombre),
+        Genero(fila.genero.id, fila.genero.nombre),
+    )
+
+
+def _tipo_entidad(fila: modelos.TipoCotizacion) -> TipoCotizacion:
+    """Convierte una fila ORM de tipo de cotizacion en su entidad."""
+    return TipoCotizacion(fila.id, fila.nombre)
 
 
 class IRepositorio(abc.ABC, Generic[T]):
@@ -94,35 +118,163 @@ class IRepositorio(abc.ABC, Generic[T]):
         pass
 
 
-class RepositorioEnMemoria(IRepositorio[T], Generic[T]):
-    """Implementación en memoria del repositorio genérico (diccionario por ID)."""
+class RepositorioSQL(IRepositorio[T], Generic[T]):
+    """Implementación genérica del repositorio sobre la base de datos."""
 
-    def __init__(self) -> None:
-        self._data: Dict[int, T] = {}
+    def __init__(
+        self,
+        conexion: ConexionDB,
+        modelo: type,
+        a_modelo: Callable[[T], object],
+        a_entidad: Callable[[object], T],
+    ) -> None:
+        """Guarda la conexión y las funciones de conversión entidad <-> fila.
+
+        Args:
+            conexion (ConexionDB): Conexión con la base de datos.
+            modelo (type): Clase ORM de SQLAlchemy de la tabla.
+            a_modelo (Callable[[T], object]): Convierte la entidad en una fila.
+            a_entidad (Callable[[object], T]): Convierte la fila en la entidad.
+        """
+        self._conexion = conexion
+        self._modelo = modelo
+        self._a_modelo = a_modelo
+        self._a_entidad = a_entidad
+
+    @property
+    def _columna_clave(self) -> object:
+        """Primera columna de la clave primaria (usada como orden por defecto)."""
+        return list(self._modelo.__table__.primary_key.columns)[0]
 
     def crear(self, entidad: T) -> T:
-        if entidad.id in self._data:
+        if self.leer_por_id(entidad.id) is not None:
             raise ValueError(f"Ya existe una entidad con id={entidad.id}")
-        self._data[entidad.id] = entidad
+        try:
+            with self._conexion.session_scope() as sesion:
+                sesion.add(self._a_modelo(entidad))
+        except IntegrityError as exc:
+            raise ValueError("Viola una restricción de la base de datos") from exc
         return entidad
 
     def leer_por_id(self, id: int) -> Optional[T]:
-        return self._data.get(id)
+        with self._conexion.session_scope() as sesion:
+            fila = sesion.get(self._modelo, id)
+            return None if fila is None else self._a_entidad(fila)
 
     def leer_todos(self) -> List[T]:
-        return list(self._data.values())
+        with self._conexion.session_scope() as sesion:
+            consulta = select(self._modelo).order_by(self._columna_clave)
+            filas = sesion.execute(consulta).scalars().all()
+            return [self._a_entidad(fila) for fila in filas]
 
     def actualizar(self, entidad: T) -> T:
-        if entidad.id not in self._data:
-            raise ValueError(f"No existe entidad con id={entidad.id}")
-        self._data[entidad.id] = entidad
+        with self._conexion.session_scope() as sesion:
+            fila = sesion.get(self._modelo, entidad.id)
+            if fila is None:
+                raise ValueError(f"No existe entidad con id={entidad.id}")
+            nueva_fila = self._a_modelo(entidad)
+            for columna in self._modelo.__table__.columns.keys():
+                setattr(fila, columna, getattr(nueva_fila, columna))
         return entidad
 
     def eliminar(self, id: int) -> bool:
-        if id not in self._data:
-            return False
-        del self._data[id]
+        with self._conexion.session_scope() as sesion:
+            fila = sesion.get(self._modelo, id)
+            if fila is None:
+                return False
+            sesion.delete(fila)
         return True
+
+
+class RepositorioGenerosSQL(RepositorioSQL[Genero]):
+    """Repositorio SQL de los géneros."""
+
+    def __init__(self, conexion: ConexionDB) -> None:
+        super().__init__(
+            conexion,
+            modelos.Genero,
+            lambda genero: modelos.Genero(id=genero.id, nombre=genero.nombre),
+            lambda fila: Genero(fila.id, fila.nombre),
+        )
+
+
+class RepositorioEditorialesSQL(RepositorioSQL[Editorial]):
+    """Repositorio SQL de las editoriales."""
+
+    def __init__(self, conexion: ConexionDB) -> None:
+        super().__init__(
+            conexion,
+            modelos.Editorial,
+            lambda editorial: modelos.Editorial(id=editorial.id, nombre=editorial.nombre),
+            lambda fila: Editorial(fila.id, fila.nombre),
+        )
+
+
+class RepositorioMonedasSQL(RepositorioSQL[Moneda]):
+    """Repositorio SQL de las monedas."""
+
+    def __init__(self, conexion: ConexionDB) -> None:
+        super().__init__(
+            conexion,
+            modelos.Moneda,
+            lambda moneda: modelos.Moneda(
+                id=moneda.id, codigo=moneda.codigo, descripcion=moneda.descripcion
+            ),
+            lambda fila: Moneda(fila.id, fila.codigo, fila.descripcion),
+        )
+
+
+class RepositorioTiposCotizacionSQL(RepositorioSQL[TipoCotizacion]):
+    """Repositorio SQL de los tipos de cotización."""
+
+    def __init__(self, conexion: ConexionDB) -> None:
+        super().__init__(
+            conexion,
+            modelos.TipoCotizacion,
+            lambda tipo: modelos.TipoCotizacion(id=tipo.id, nombre=tipo.nombre),
+            lambda fila: TipoCotizacion(fila.id, fila.nombre),
+        )
+
+
+class RepositorioLibrosSQL(RepositorioSQL[Libro]):
+    """Repositorio SQL de los libros (reconstruye editorial y género por objeto)."""
+
+    def __init__(self, conexion: ConexionDB) -> None:
+        super().__init__(
+            conexion,
+            modelos.Libro,
+            lambda libro: modelos.Libro(
+                id=libro.id,
+                isbn=libro.isbn,
+                titulo=libro.titulo,
+                autor=libro.autor,
+                editorial_id=libro.editorial_id,
+                genero_id=libro.genero_id,
+            ),
+            _libro_entidad,
+        )
+
+
+class RepositorioPreciosSQL(RepositorioSQL[Precio]):
+    """Repositorio SQL de los precios (reconstruye libro y moneda por objeto)."""
+
+    def __init__(self, conexion: ConexionDB) -> None:
+        super().__init__(
+            conexion,
+            modelos.Precio,
+            lambda precio: modelos.Precio(
+                id=precio.id,
+                libro_id=precio.libro_id,
+                moneda_id=precio.moneda_id,
+                monto=precio.monto,
+            ),
+            lambda fila: Precio(
+                fila.id,
+                _libro_entidad(fila.libro),
+                Moneda(fila.moneda.id, fila.moneda.codigo, fila.moneda.descripcion),
+                float(fila.monto),
+            ),
+        )
 
 
 class IRepositorioStock(abc.ABC):
@@ -157,7 +309,11 @@ class IRepositorioStock(abc.ABC):
 
     @abc.abstractmethod
     def leer_todos(self) -> List[Stock]:
-        """Lee todos los registros de stock."""
+        """Lee todos los registros de stock.
+
+        Returns:
+            List[Stock]: Una lista con todo el stock.
+        """
         pass
 
     @abc.abstractmethod
@@ -188,34 +344,48 @@ class IRepositorioStock(abc.ABC):
         pass
 
 
-class RepositorioStockEnMemoria(IRepositorioStock):
-    """Implementación en memoria del repositorio de Stock (clave: libro_id)."""
+class RepositorioStockSQL(IRepositorioStock):
+    """Implementación SQL del repositorio de Stock (clave primaria: libro_id)."""
 
-    def __init__(self) -> None:
-        self._data: Dict[int, Stock] = {}
+    def __init__(self, conexion: ConexionDB) -> None:
+        self._conexion = conexion
+
+    @staticmethod
+    def _a_entidad(fila: modelos.Stock) -> Stock:
+        return Stock(_libro_entidad(fila.libro), fila.cantidad)
 
     def crear(self, stock: Stock) -> Stock:
-        if stock.libro_id in self._data:
+        if self.leer_por_libro(stock.libro_id) is not None:
             raise ValueError(f"Ya existe stock para libro_id={stock.libro_id}")
-        self._data[stock.libro_id] = stock
+        with self._conexion.session_scope() as sesion:
+            sesion.add(modelos.Stock(libro_id=stock.libro_id, cantidad=stock.cantidad))
         return stock
 
     def leer_por_libro(self, libro_id: int) -> Optional[Stock]:
-        return self._data.get(libro_id)
+        with self._conexion.session_scope() as sesion:
+            fila = sesion.get(modelos.Stock, libro_id)
+            return None if fila is None else self._a_entidad(fila)
 
     def leer_todos(self) -> List[Stock]:
-        return list(self._data.values())
+        with self._conexion.session_scope() as sesion:
+            consulta = select(modelos.Stock).order_by(modelos.Stock.libro_id)
+            filas = sesion.execute(consulta).scalars().all()
+            return [self._a_entidad(fila) for fila in filas]
 
     def actualizar(self, stock: Stock) -> Stock:
-        if stock.libro_id not in self._data:
-            raise ValueError(f"No existe stock para libro_id={stock.libro_id}")
-        self._data[stock.libro_id] = stock
+        with self._conexion.session_scope() as sesion:
+            fila = sesion.get(modelos.Stock, stock.libro_id)
+            if fila is None:
+                raise ValueError(f"No existe stock para libro_id={stock.libro_id}")
+            fila.cantidad = stock.cantidad
         return stock
 
     def eliminar(self, libro_id: int) -> bool:
-        if libro_id not in self._data:
-            return False
-        del self._data[libro_id]
+        with self._conexion.session_scope() as sesion:
+            fila = sesion.get(modelos.Stock, libro_id)
+            if fila is None:
+                return False
+            sesion.delete(fila)
         return True
 
 
@@ -266,7 +436,11 @@ class IRepositorioCotizacionDolar(abc.ABC):
 
     @abc.abstractmethod
     def leer_todos(self) -> List[CotizacionDolar]:
-        """Lee todas las cotizaciones almacenadas."""
+        """Lee todas las cotizaciones registradas.
+
+        Returns:
+            List[CotizacionDolar]: Una lista con todas las cotizaciones.
+        """
         pass
 
     @abc.abstractmethod
@@ -278,6 +452,9 @@ class IRepositorioCotizacionDolar(abc.ABC):
 
         Returns:
             CotizacionDolar: El objeto CotizacionDolar actualizado.
+
+        Raises:
+            ValueError: Si no se encuentra la cotización para actualizar.
         """
         pass
 
@@ -287,7 +464,7 @@ class IRepositorioCotizacionDolar(abc.ABC):
 
         Args:
             tipo_id (int): El ID del tipo de cotización.
-            fecha (datetime.date): La fecha de la cotización a eliminar.
+            fecha (datetime.date): La fecha de la cotización.
 
         Returns:
             bool: True si la cotización fue eliminada, False si no se encontró.
@@ -295,419 +472,68 @@ class IRepositorioCotizacionDolar(abc.ABC):
         pass
 
 
-class RepositorioCotizacionDolarEnMemoria(IRepositorioCotizacionDolar):
-    """Implementación en memoria del repositorio de cotizaciones (clave: tipo_id + fecha)."""
+class RepositorioCotizacionDolarSQL(IRepositorioCotizacionDolar):
+    """Implementación SQL del repositorio de cotizaciones (clave: tipo_id + fecha)."""
 
-    def __init__(self) -> None:
-        self._data: Dict[tuple, CotizacionDolar] = {}
+    def __init__(self, conexion: ConexionDB) -> None:
+        self._conexion = conexion
 
-    def _key(self, tipo_id: int, fecha: datetime.date) -> tuple:
-        return (tipo_id, fecha.isoformat())
+    @staticmethod
+    def _a_modelo(cotizacion: CotizacionDolar) -> modelos.CotizacionDolar:
+        return modelos.CotizacionDolar(
+            tipo_id=cotizacion.tipo_id, fecha=cotizacion.fecha, valor=cotizacion.valor
+        )
+
+    @staticmethod
+    def _a_entidad(fila: modelos.CotizacionDolar) -> CotizacionDolar:
+        return CotizacionDolar(
+            _tipo_entidad(fila.tipo), fila.fecha, float(fila.valor)
+        )
 
     def crear(self, cotizacion: CotizacionDolar) -> CotizacionDolar:
-        key = self._key(cotizacion.tipo_id, cotizacion.fecha)
-        if key in self._data:
+        if self.leer_por_tipo_y_fecha(cotizacion.tipo_id, cotizacion.fecha) is not None:
             raise ValueError("Ya existe una cotización para el mismo tipo y fecha")
-        self._data[key] = cotizacion
+        with self._conexion.session_scope() as sesion:
+            sesion.add(self._a_modelo(cotizacion))
         return cotizacion
 
     def leer_por_tipo_y_fecha(
         self, tipo_id: int, fecha: datetime.date
     ) -> Optional[CotizacionDolar]:
-        return self._data.get(self._key(tipo_id, fecha))
+        with self._conexion.session_scope() as sesion:
+            fila = sesion.get(modelos.CotizacionDolar, (tipo_id, fecha))
+            return None if fila is None else self._a_entidad(fila)
 
     def leer_historico_por_tipo(self, tipo_id: int) -> List[CotizacionDolar]:
-        cotizaciones = [x for x in self._data.values() if x.tipo_id == tipo_id]
-        return sorted(cotizaciones, key=lambda x: x.fecha)
+        with self._conexion.session_scope() as sesion:
+            consulta = (
+                select(modelos.CotizacionDolar)
+                .where(modelos.CotizacionDolar.tipo_id == tipo_id)
+                .order_by(modelos.CotizacionDolar.fecha)
+            )
+            filas = sesion.execute(consulta).scalars().all()
+            return [self._a_entidad(fila) for fila in filas]
 
     def leer_todos(self) -> List[CotizacionDolar]:
-        return sorted(list(self._data.values()), key=lambda x: (x.tipo_id, x.fecha))
+        with self._conexion.session_scope() as sesion:
+            consulta = select(modelos.CotizacionDolar).order_by(
+                modelos.CotizacionDolar.tipo_id, modelos.CotizacionDolar.fecha
+            )
+            filas = sesion.execute(consulta).scalars().all()
+            return [self._a_entidad(fila) for fila in filas]
 
     def actualizar(self, cotizacion: CotizacionDolar) -> CotizacionDolar:
-        key = self._key(cotizacion.tipo_id, cotizacion.fecha)
-        if key not in self._data:
-            raise ValueError("No existe la cotización solicitada")
-        self._data[key] = cotizacion
+        with self._conexion.session_scope() as sesion:
+            fila = sesion.get(modelos.CotizacionDolar, (cotizacion.tipo_id, cotizacion.fecha))
+            if fila is None:
+                raise ValueError("No existe la cotización solicitada")
+            fila.valor = cotizacion.valor
         return cotizacion
 
     def eliminar(self, tipo_id: int, fecha: datetime.date) -> bool:
-        key = self._key(tipo_id, fecha)
-        if key not in self._data:
-            return False
-        del self._data[key]
-        return True
-
-
-# =============================================================================
-# Implementaciones de Repositorios con Persistencia en Archivos CSV
-# =============================================================================
-
-
-class RepositorioCSVBase(IRepositorio[T], Generic[T]):
-    """Repositorio base que sincroniza entidades con un archivo CSV en disco."""
-
-    def __init__(self, ruta_archivo: str | Path, columnas: List[str]) -> None:
-        self.ruta_archivo = Path(ruta_archivo)
-        self.columnas = columnas
-        self._data: Dict[int, T] = {}
-        self._inicializar_archivo()
-        self.recargar()
-
-    def _inicializar_archivo(self) -> None:
-        self.ruta_archivo.parent.mkdir(parents=True, exist_ok=True)
-        if not self.ruta_archivo.exists():
-            with open(self.ruta_archivo, "w", newline="", encoding="utf-8") as f:
-                escritor = csv.DictWriter(f, fieldnames=self.columnas)
-                escritor.writeheader()
-
-    def _guardar_en_archivo(self) -> None:
-        self.ruta_archivo.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.ruta_archivo, "w", newline="", encoding="utf-8") as f:
-            escritor = csv.DictWriter(f, fieldnames=self.columnas)
-            escritor.writeheader()
-            for entidad in self._data.values():
-                escritor.writerow(self._entidad_a_fila(entidad))
-
-    def recargar(self) -> None:
-        """Vuelve a leer el archivo CSV desde el disco."""
-        self._data.clear()
-        if not self.ruta_archivo.exists():
-            return
-        with open(self.ruta_archivo, "r", newline="", encoding="utf-8") as f:
-            lector = csv.DictReader(f)
-            for fila in lector:
-                entidad = self._fila_a_entidad(fila)
-                if entidad is not None:
-                    self._data[entidad.id] = entidad
-
-    @abc.abstractmethod
-    def _fila_a_entidad(self, fila: Dict[str, str]) -> Optional[T]:
-        """Convierte una fila del CSV en una instancia de entidad."""
-        pass
-
-    @abc.abstractmethod
-    def _entidad_a_fila(self, entidad: T) -> Dict[str, Any]:
-        """Convierte una entidad en un diccionario listo para escribir al CSV."""
-        pass
-
-    def crear(self, entidad: T) -> T:
-        if entidad.id in self._data:
-            raise ValueError(f"Ya existe una entidad con id={entidad.id}")
-        self._data[entidad.id] = entidad
-        self._guardar_en_archivo()
-        return entidad
-
-    def leer_por_id(self, id: int) -> Optional[T]:
-        return self._data.get(id)
-
-    def leer_todos(self) -> List[T]:
-        return list(self._data.values())
-
-    def actualizar(self, entidad: T) -> T:
-        if entidad.id not in self._data:
-            raise ValueError(f"No existe entidad con id={entidad.id}")
-        self._data[entidad.id] = entidad
-        self._guardar_en_archivo()
-        return entidad
-
-    def eliminar(self, id: int) -> bool:
-        if id not in self._data:
-            return False
-        del self._data[id]
-        self._guardar_en_archivo()
-        return True
-
-
-class RepositorioGeneroCSV(RepositorioCSVBase[Genero]):
-    """Repositorio persistente en CSV para Géneros."""
-
-    def __init__(self, ruta_archivo: str | Path) -> None:
-        super().__init__(ruta_archivo, columnas=["id", "nombre"])
-
-    def _fila_a_entidad(self, fila: Dict[str, str]) -> Optional[Genero]:
-        return Genero(id=int(fila["id"]), nombre=fila["nombre"])
-
-    def _entidad_a_fila(self, entidad: Genero) -> Dict[str, Any]:
-        return {"id": entidad.id, "nombre": entidad.nombre}
-
-
-class RepositorioEditorialCSV(RepositorioCSVBase[Editorial]):
-    """Repositorio persistente en CSV para Editoriales."""
-
-    def __init__(self, ruta_archivo: str | Path) -> None:
-        super().__init__(ruta_archivo, columnas=["id", "nombre"])
-
-    def _fila_a_entidad(self, fila: Dict[str, str]) -> Optional[Editorial]:
-        return Editorial(id=int(fila["id"]), nombre=fila["nombre"])
-
-    def _entidad_a_fila(self, entidad: Editorial) -> Dict[str, Any]:
-        return {"id": entidad.id, "nombre": entidad.nombre}
-
-
-class RepositorioMonedaCSV(RepositorioCSVBase[Moneda]):
-    """Repositorio persistente en CSV para Monedas."""
-
-    def __init__(self, ruta_archivo: str | Path) -> None:
-        super().__init__(ruta_archivo, columnas=["id", "codigo", "descripcion"])
-
-    def _fila_a_entidad(self, fila: Dict[str, str]) -> Optional[Moneda]:
-        return Moneda(
-            id=int(fila["id"]),
-            codigo=fila["codigo"],
-            descripcion=fila["descripcion"],
-        )
-
-    def _entidad_a_fila(self, entidad: Moneda) -> Dict[str, Any]:
-        return {
-            "id": entidad.id,
-            "codigo": entidad.codigo,
-            "descripcion": entidad.descripcion,
-        }
-
-
-class RepositorioTipoCotizacionCSV(RepositorioCSVBase[TipoCotizacion]):
-    """Repositorio persistente en CSV para Tipos de Cotización."""
-
-    def __init__(self, ruta_archivo: str | Path) -> None:
-        super().__init__(ruta_archivo, columnas=["id", "nombre"])
-
-    def _fila_a_entidad(self, fila: Dict[str, str]) -> Optional[TipoCotizacion]:
-        return TipoCotizacion(id=int(fila["id"]), nombre=fila["nombre"])
-
-    def _entidad_a_fila(self, entidad: TipoCotizacion) -> Dict[str, Any]:
-        return {"id": entidad.id, "nombre": entidad.nombre}
-
-
-class RepositorioLibroCSV(RepositorioCSVBase[Libro]):
-    """Repositorio persistente en CSV para Libros (resuelve Editorial y Género)."""
-
-    def __init__(
-        self,
-        ruta_archivo: str | Path,
-        repo_editoriales: IRepositorio[Editorial],
-        repo_generos: IRepositorio[Genero],
-    ) -> None:
-        self.repo_editoriales = repo_editoriales
-        self.repo_generos = repo_generos
-        super().__init__(
-            ruta_archivo,
-            columnas=["id", "isbn", "titulo", "autor", "editorial_id", "genero_id"],
-        )
-
-    def _fila_a_entidad(self, fila: Dict[str, str]) -> Optional[Libro]:
-        editorial = self.repo_editoriales.leer_por_id(int(fila["editorial_id"]))
-        genero = self.repo_generos.leer_por_id(int(fila["genero_id"]))
-        if editorial is None or genero is None:
-            return None
-        return Libro(
-            id=int(fila["id"]),
-            isbn=fila["isbn"],
-            titulo=fila["titulo"],
-            autor=fila["autor"],
-            editorial=editorial,
-            genero=genero,
-        )
-
-    def _entidad_a_fila(self, entidad: Libro) -> Dict[str, Any]:
-        return {
-            "id": entidad.id,
-            "isbn": entidad.isbn,
-            "titulo": entidad.titulo,
-            "autor": entidad.autor,
-            "editorial_id": entidad.editorial.id,
-            "genero_id": entidad.genero.id,
-        }
-
-
-class RepositorioPrecioCSV(RepositorioCSVBase[Precio]):
-    """Repositorio persistente en CSV para Precios (resuelve Libro y Moneda)."""
-
-    def __init__(
-        self,
-        ruta_archivo: str | Path,
-        repo_libros: IRepositorio[Libro],
-        repo_monedas: IRepositorio[Moneda],
-    ) -> None:
-        self.repo_libros = repo_libros
-        self.repo_monedas = repo_monedas
-        super().__init__(
-            ruta_archivo,
-            columnas=["id", "libro_id", "moneda_id", "monto"],
-        )
-
-    def _fila_a_entidad(self, fila: Dict[str, str]) -> Optional[Precio]:
-        libro = self.repo_libros.leer_por_id(int(fila["libro_id"]))
-        moneda = self.repo_monedas.leer_por_id(int(fila["moneda_id"]))
-        if libro is None or moneda is None:
-            return None
-        return Precio(
-            id=int(fila["id"]),
-            libro=libro,
-            moneda=moneda,
-            monto=float(fila["monto"]),
-        )
-
-    def _entidad_a_fila(self, entidad: Precio) -> Dict[str, Any]:
-        return {
-            "id": entidad.id,
-            "libro_id": entidad.libro.id,
-            "moneda_id": entidad.moneda.id,
-            "monto": entidad.monto,
-        }
-
-
-class RepositorioStockCSV(IRepositorioStock):
-    """Repositorio persistente en CSV para Stock (resuelve Libro)."""
-
-    def __init__(
-        self, ruta_archivo: str | Path, repo_libros: IRepositorio[Libro]
-    ) -> None:
-        self.ruta_archivo = Path(ruta_archivo)
-        self.repo_libros = repo_libros
-        self.columnas = ["libro_id", "cantidad"]
-        self._data: Dict[int, Stock] = {}
-        self._inicializar_archivo()
-        self.recargar()
-
-    def _inicializar_archivo(self) -> None:
-        self.ruta_archivo.parent.mkdir(parents=True, exist_ok=True)
-        if not self.ruta_archivo.exists():
-            with open(self.ruta_archivo, "w", newline="", encoding="utf-8") as f:
-                escritor = csv.DictWriter(f, fieldnames=self.columnas)
-                escritor.writeheader()
-
-    def _guardar_en_archivo(self) -> None:
-        self.ruta_archivo.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.ruta_archivo, "w", newline="", encoding="utf-8") as f:
-            escritor = csv.DictWriter(f, fieldnames=self.columnas)
-            escritor.writeheader()
-            for s in self._data.values():
-                escritor.writerow({"libro_id": s.libro.id, "cantidad": s.cantidad})
-
-    def recargar(self) -> None:
-        self._data.clear()
-        if not self.ruta_archivo.exists():
-            return
-        with open(self.ruta_archivo, "r", newline="", encoding="utf-8") as f:
-            lector = csv.DictReader(f)
-            for fila in lector:
-                libro = self.repo_libros.leer_por_id(int(fila["libro_id"]))
-                if libro is not None:
-                    self._data[libro.id] = Stock(libro=libro, cantidad=int(fila["cantidad"]))
-
-    def crear(self, stock: Stock) -> Stock:
-        if stock.libro_id in self._data:
-            raise ValueError(f"Ya existe stock para libro_id={stock.libro_id}")
-        self._data[stock.libro_id] = stock
-        self._guardar_en_archivo()
-        return stock
-
-    def leer_por_libro(self, libro_id: int) -> Optional[Stock]:
-        return self._data.get(libro_id)
-
-    def leer_todos(self) -> List[Stock]:
-        return list(self._data.values())
-
-    def actualizar(self, stock: Stock) -> Stock:
-        if stock.libro_id not in self._data:
-            raise ValueError(f"No existe stock para libro_id={stock.libro_id}")
-        self._data[stock.libro_id] = stock
-        self._guardar_en_archivo()
-        return stock
-
-    def eliminar(self, libro_id: int) -> bool:
-        if libro_id not in self._data:
-            return False
-        del self._data[libro_id]
-        self._guardar_en_archivo()
-        return True
-
-
-class RepositorioCotizacionDolarCSV(IRepositorioCotizacionDolar):
-    """Repositorio persistente en CSV para Cotizaciones de Dólar (resuelve TipoCotizacion)."""
-
-    def __init__(
-        self,
-        ruta_archivo: str | Path,
-        repo_tipos: IRepositorio[TipoCotizacion],
-    ) -> None:
-        self.ruta_archivo = Path(ruta_archivo)
-        self.repo_tipos = repo_tipos
-        self.columnas = ["tipo_id", "fecha", "valor"]
-        self._data: Dict[tuple, CotizacionDolar] = {}
-        self._inicializar_archivo()
-        self.recargar()
-
-    def _key(self, tipo_id: int, fecha: datetime.date) -> tuple:
-        return (tipo_id, fecha.isoformat())
-
-    def _inicializar_archivo(self) -> None:
-        self.ruta_archivo.parent.mkdir(parents=True, exist_ok=True)
-        if not self.ruta_archivo.exists():
-            with open(self.ruta_archivo, "w", newline="", encoding="utf-8") as f:
-                escritor = csv.DictWriter(f, fieldnames=self.columnas)
-                escritor.writeheader()
-
-    def _guardar_en_archivo(self) -> None:
-        self.ruta_archivo.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.ruta_archivo, "w", newline="", encoding="utf-8") as f:
-            escritor = csv.DictWriter(f, fieldnames=self.columnas)
-            escritor.writeheader()
-            for c in self._data.values():
-                escritor.writerow(
-                    {
-                        "tipo_id": c.tipo.id,
-                        "fecha": c.fecha.isoformat(),
-                        "valor": c.valor,
-                    }
-                )
-
-    def recargar(self) -> None:
-        self._data.clear()
-        if not self.ruta_archivo.exists():
-            return
-        with open(self.ruta_archivo, "r", newline="", encoding="utf-8") as f:
-            lector = csv.DictReader(f)
-            for fila in lector:
-                tipo = self.repo_tipos.leer_por_id(int(fila["tipo_id"]))
-                if tipo is not None:
-                    fecha = datetime.date.fromisoformat(fila["fecha"])
-                    valor = float(fila["valor"])
-                    key = self._key(tipo.id, fecha)
-                    self._data[key] = CotizacionDolar(tipo=tipo, fecha=fecha, valor=valor)
-
-    def crear(self, cotizacion: CotizacionDolar) -> CotizacionDolar:
-        key = self._key(cotizacion.tipo_id, cotizacion.fecha)
-        if key in self._data:
-            raise ValueError("Ya existe una cotización para el mismo tipo y fecha")
-        self._data[key] = cotizacion
-        self._guardar_en_archivo()
-        return cotizacion
-
-    def leer_por_tipo_y_fecha(
-        self, tipo_id: int, fecha: datetime.date
-    ) -> Optional[CotizacionDolar]:
-        return self._data.get(self._key(tipo_id, fecha))
-
-    def leer_historico_por_tipo(self, tipo_id: int) -> List[CotizacionDolar]:
-        cotizaciones = [x for x in self._data.values() if x.tipo_id == tipo_id]
-        return sorted(cotizaciones, key=lambda x: x.fecha)
-
-    def leer_todos(self) -> List[CotizacionDolar]:
-        return sorted(list(self._data.values()), key=lambda x: (x.tipo_id, x.fecha))
-
-    def actualizar(self, cotizacion: CotizacionDolar) -> CotizacionDolar:
-        key = self._key(cotizacion.tipo_id, cotizacion.fecha)
-        if key not in self._data:
-            raise ValueError("No existe la cotización solicitada")
-        self._data[key] = cotizacion
-        self._guardar_en_archivo()
-        return cotizacion
-
-    def eliminar(self, tipo_id: int, fecha: datetime.date) -> bool:
-        key = self._key(tipo_id, fecha)
-        if key not in self._data:
-            return False
-        del self._data[key]
-        self._guardar_en_archivo()
+        with self._conexion.session_scope() as sesion:
+            fila = sesion.get(modelos.CotizacionDolar, (tipo_id, fecha))
+            if fila is None:
+                return False
+            sesion.delete(fila)
         return True

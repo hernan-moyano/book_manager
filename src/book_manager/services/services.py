@@ -1,15 +1,20 @@
 """Servicios del sistema Book Manager.
 
 Contiene la lógica de negocio por entidad con inyección de repositorios,
-las reglas de integridad referencial (ISBN único, no eliminar géneros/editoriales con libros)
+las reglas de integridad referencial (ISBN único)
 y la clase orquestadora LibreriaService para coordinar operaciones y reportes.
 """
 from __future__ import annotations
 
+import csv
+import os
 from datetime import date
 from pathlib import Path
 from typing import Dict, List, Optional
 
+import requests
+
+from book_manager.database.connection import ConexionDB
 from book_manager.entities.entities import (
     CotizacionDolar,
     Editorial,
@@ -24,14 +29,14 @@ from book_manager.repositories.repositories import (
     IRepositorio,
     IRepositorioCotizacionDolar,
     IRepositorioStock,
-    RepositorioCotizacionDolarCSV,
-    RepositorioEditorialCSV,
-    RepositorioGeneroCSV,
-    RepositorioLibroCSV,
-    RepositorioMonedaCSV,
-    RepositorioPrecioCSV,
-    RepositorioStockCSV,
-    RepositorioTipoCotizacionCSV,
+    RepositorioCotizacionDolarSQL,
+    RepositorioEditorialesSQL,
+    RepositorioGenerosSQL,
+    RepositorioLibrosSQL,
+    RepositorioMonedasSQL,
+    RepositorioPreciosSQL,
+    RepositorioStockSQL,
+    RepositorioTiposCotizacionSQL,
 )
 
 
@@ -361,37 +366,18 @@ class LibreriaService:
         self.repo_cotizaciones = cotizacion_service.repo
 
     @classmethod
-    def crear_con_archivos_csv(
-        cls, base_dir: str | Path | None = None
+    def crear_con_base_de_datos(
+        cls, conexion: ConexionDB
     ) -> LibreriaService:
-        """Crea la jerarquía de repositorios CSV y servicios por entidad."""
-        if base_dir is None:
-            base_path = Path(__file__).resolve().parent.parent / "migrations" / "csv"
-        else:
-            base_path = Path(base_dir)
-
-        base_path.mkdir(parents=True, exist_ok=True)
-
-        repo_generos = RepositorioGeneroCSV(base_path / "genero.csv")
-        repo_editoriales = RepositorioEditorialCSV(base_path / "editorial.csv")
-        repo_monedas = RepositorioMonedaCSV(base_path / "moneda.csv")
-        repo_tipos = RepositorioTipoCotizacionCSV(base_path / "tipo_cotizacion.csv")
-        repo_libros = RepositorioLibroCSV(
-            base_path / "libro.csv",
-            repo_editoriales=repo_editoriales,
-            repo_generos=repo_generos,
-        )
-        repo_precios = RepositorioPrecioCSV(
-            base_path / "precio.csv",
-            repo_libros=repo_libros,
-            repo_monedas=repo_monedas,
-        )
-        repo_stock = RepositorioStockCSV(
-            base_path / "stock.csv", repo_libros=repo_libros
-        )
-        repo_cotizaciones = RepositorioCotizacionDolarCSV(
-            base_path / "cotizacion_dolar.csv", repo_tipos=repo_tipos
-        )
+        """Crea la jerarquía de repositorios SQL y servicios por entidad."""
+        repo_generos = RepositorioGenerosSQL(conexion)
+        repo_editoriales = RepositorioEditorialesSQL(conexion)
+        repo_monedas = RepositorioMonedasSQL(conexion)
+        repo_tipos = RepositorioTiposCotizacionSQL(conexion)
+        repo_libros = RepositorioLibrosSQL(conexion)
+        repo_precios = RepositorioPreciosSQL(conexion)
+        repo_stock = RepositorioStockSQL(conexion)
+        repo_cotizaciones = RepositorioCotizacionDolarSQL(conexion)
 
         genero_service = GeneroService(repo_generos, repo_libros)
         editorial_service = EditorialService(repo_editoriales, repo_libros)
@@ -542,3 +528,108 @@ class LibreriaService:
         """Valor de la cotización del día actual para el tipo indicado."""
         item = self.cotizacion_service.obtener_cotizacion(tipo_id, date.today())
         return None if item is None else item.valor
+
+    # -------------------- Precios bimonetarios y exportación -----------------
+    def _moneda_por_codigo(self, codigo: str) -> Optional[Moneda]:
+        """Busca una moneda por su código (en mayúsculas) o None si no existe."""
+        codigo_normalizado = codigo.strip().upper()
+        for moneda in self.moneda_service.listar_monedas():
+            if moneda.codigo == codigo_normalizado:
+                return moneda
+        return None
+
+    def _cotizacion_oficial_hoy(self) -> Optional[float]:
+        """Cotización del día para el tipo 'Oficial' si está cargada."""
+        for tipo in self.tipo_cotizacion_service.listar_tipos_cotizacion():
+            if tipo.nombre.strip().lower() == "oficial":
+                item = self.cotizacion_service.obtener_cotizacion(tipo.id, date.today())
+                return None if item is None else item.valor
+        for cotizacion in self.cotizacion_service.listar_cotizaciones():
+            if cotizacion.fecha == date.today():
+                return cotizacion.valor
+        return None
+
+    def listar_precios_bimonetarios(self, codigo_moneda: str) -> List[Dict[str, object]]:
+        """Lista cada libro con su precio en ARS y su precio en otra moneda.
+
+        Si el libro no tiene precio cargado en la moneda destino, se usa la
+        cotización del dólar del día (dentro de lo que permite el modelo de
+        datos) como referencia de conversión del precio en pesos.
+        """
+        moneda_destino = self._moneda_por_codigo(codigo_moneda)
+        if moneda_destino is None:
+            raise ValueError(f"No existe la moneda con código '{codigo_moneda}'")
+        moneda_ars = self._moneda_por_codigo("ARS")
+        cotizacion_hoy = self._cotizacion_oficial_hoy()
+
+        filas: List[Dict[str, object]] = []
+        for libro in self.libro_service.listar_libros():
+            precio_ars: Optional[float] = None
+            precio_destino: Optional[float] = None
+            for precio in self.precio_service.listar_precios():
+                if precio.libro.id != libro.id:
+                    continue
+                if (
+                    precio_ars is None
+                    and moneda_ars is not None
+                    and precio.moneda.id == moneda_ars.id
+                ):
+                    precio_ars = precio.monto
+                if precio.moneda.id == moneda_destino.id:
+                    precio_destino = precio.monto
+
+            monto_moneda = precio_destino
+            if monto_moneda is None and precio_ars is not None and cotizacion_hoy:
+                if moneda_destino.codigo == "ARS":
+                    monto_moneda = precio_ars
+                else:
+                    monto_moneda = round(precio_ars / cotizacion_hoy, 2)
+            filas.append(
+                {
+                    "libro": libro,
+                    "moneda": moneda_destino.codigo,
+                    "monto_ars": precio_ars,
+                    "monto_moneda": monto_moneda,
+                }
+            )
+        return filas
+
+    def exportar_precios_csv(self, ruta_destino: Optional[str] = None) -> Path:
+        """Exporta la lista de precios en todos los tipos de moneda a un CSV.
+
+        Cada columna es una moneda y cada fila un libro del catálogo.
+
+        Args:
+            ruta_destino (Optional[str]): Ruta del archivo a generar. Si no se
+                indica, se usa ``migrations/precios_export.csv``.
+
+        Returns:
+            Path: Ruta del archivo CSV generado.
+        """
+        if ruta_destino is None:
+            ruta_destino = (
+                Path(__file__).resolve().parent.parent / "migrations" / "precios_export.csv"
+            )
+        ruta = Path(ruta_destino)
+        ruta.parent.mkdir(parents=True, exist_ok=True)
+
+        monedas = self.moneda_service.listar_monedas()
+        precios_por_libro: Dict[int, Dict[str, float]] = {}
+        for precio in self.precio_service.listar_precios():
+            precios_por_libro.setdefault(precio.libro.id, {})[
+                precio.moneda.codigo
+            ] = precio.monto
+
+        libros = self.libro_service.listar_libros()
+        with open(ruta, "w", newline="", encoding="utf-8") as archivo:
+            escritor = csv.writer(archivo)
+            escritor.writerow(
+                ["ID Libro", "Título", "Autor"] + [m.codigo for m in monedas]
+            )
+            for libro in libros:
+                precios = precios_por_libro.get(libro.id, {})
+                escritor.writerow(
+                    [libro.id, libro.titulo, libro.autor]
+                    + [precios.get(m.codigo, "") for m in monedas]
+                )
+        return ruta

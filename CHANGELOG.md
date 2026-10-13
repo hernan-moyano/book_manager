@@ -1,3 +1,7 @@
+[Ejercicio 06 - Sprint 2]
+- Repositorios reimplementados sobre SQLAlchemy conservando las interfaces CRUD.
+- Servicios y main adaptados para operar unicamente contra la base de datos.
+
 [Ejercicio 05 - Sprint 2]
 - Migracion de los CSV del Sprint 1 a la base de datos con la funcion migrar_datos.
 - Generacion de los archivos .sql con las sentencias de insercion en migrations/sql.

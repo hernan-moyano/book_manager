@@ -1,36 +1,39 @@
 """Punto de entrada del sistema Book Manager."""
 from __future__ import annotations
 
-from pathlib import Path
-
+from book_manager.database.connection import ConexionDB
+from book_manager.migrations.migrations import migrar_datos
 from book_manager.preload_data.preload_data import (
     RUTA_CSV_POR_DEFECTO,
-    cargar_datos_desde_csv,
     generar_csv_demo,
 )
 from book_manager.services.services import LibreriaService
 from book_manager.ui.console import ConsolaLibreria
 
+RUTA_SQL_POR_DEFECTO = RUTA_CSV_POR_DEFECTO.parent / "sql"
 
-def crear_app(
-    import_default_data: bool = True, base_dir: Path | str = RUTA_CSV_POR_DEFECTO
-) -> LibreriaService:
-    """Crea la aplicación con persistencia en archivos CSV y precarga inicial opcional."""
-    base_path = Path(base_dir)
+
+def crear_app(import_default_data: bool = True) -> LibreriaService:
+    """Crea la aplicación: conecta a la base de datos y carga los datos iniciales.
+
+    Args:
+        import_default_data (bool): Migra los CSV a la base de datos si está vacía.
+
+    Returns:
+        LibreriaService: El servicio de la librería listo para usar.
+    """
+    conexion = ConexionDB()
+    conexion.crear_tablas()
     if import_default_data:
-        generar_csv_demo(str(base_path))
-
-    service = LibreriaService.crear_con_archivos_csv(base_dir=base_path)
-
-    if import_default_data:
-        cargar_datos_desde_csv(service, str(base_path))
-
-    return service
+        if not any(RUTA_CSV_POR_DEFECTO.glob("*.csv")):
+            generar_csv_demo(str(RUTA_CSV_POR_DEFECTO))
+        migrar_datos(str(RUTA_CSV_POR_DEFECTO), str(RUTA_SQL_POR_DEFECTO), conexion)
+    return LibreriaService.crear_con_base_de_datos(conexion)
 
 
 def main(
     import_default_data: bool = True, interactive: bool = True
-) -> None:
+) -> LibreriaService:
     """Inicia la aplicación.
 
     ``interactive=False`` permite validar el notebook con "Ejecutar todo"
@@ -39,6 +42,7 @@ def main(
     service = crear_app(import_default_data=import_default_data)
     if interactive:
         ConsolaLibreria(service).ejecutar()
+    return service
 
 
 if __name__ == "__main__":
