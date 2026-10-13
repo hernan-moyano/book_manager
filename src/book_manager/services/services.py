@@ -1,7 +1,7 @@
 """Servicios del sistema Book Manager.
 
 Contiene la lógica de negocio por entidad con inyección de repositorios,
-las reglas de integridad referencial (ISBN único)
+las reglas de integridad referencial (ISBN único, no eliminar géneros/editoriales con libros)
 y la clase orquestadora LibreriaService para coordinar operaciones y reportes.
 """
 from __future__ import annotations
@@ -633,3 +633,71 @@ class LibreriaService:
                     + [precios.get(m.codigo, "") for m in monedas]
                 )
         return ruta
+
+
+# --------------------------- Servicio de cotizaciones -------------------------
+class ServicioCotizacionDolar:
+    """Sprint 2: descarga las cotizaciones del dólar y las registra en la base.
+
+    Consume la API pública de dólar y registra las
+    cotizaciones del día en el sistema reutilizando los servicios del dominio.
+    """
+
+    API_URL_POR_DEFECTO = "https://dolarapi.com/v1/dolares"
+
+    def __init__(self, service: LibreriaService) -> None:
+        self.service = service
+
+    def obtener_cotizaciones(self) -> List[CotizacionDolar]:
+        """Descarga las cotizaciones desde la API y las registra en la base."""
+        url = os.environ.get("API_URL", self.API_URL_POR_DEFECTO).strip()
+        if not url:
+            url = self.API_URL_POR_DEFECTO
+        respuesta = requests.get(url, timeout=15)
+        if respuesta.status_code != 200:
+            raise ValueError(
+                f"La API del dólar respondió con estado {respuesta.status_code}"
+            )
+        try:
+            datos = respuesta.json()
+        except ValueError as exc:
+            raise ValueError("La API del dólar no devolvió un JSON válido") from exc
+        if not isinstance(datos, list):
+            raise ValueError("La API del dólar no devolvió una lista de cotizaciones")
+
+        tipos = {
+            t.nombre.strip().lower(): t
+            for t in self.service.tipo_cotizacion_service.listar_tipos_cotizacion()
+        }
+        max_id = max(
+            (t.id for t in self.service.tipo_cotizacion_service.listar_tipos_cotizacion()),
+            default=0,
+        )
+
+        cotizaciones: List[CotizacionDolar] = []
+        for item in datos:
+            nombre = (item.get("nombre") or "Desconocido").strip()
+            valor = item.get("venta") or item.get("compra")
+            if valor is None:
+                continue
+            fecha_txt = item.get("fecha") or item.get("fechaActualizacion") or ""
+            fecha = date.fromisoformat(fecha_txt[:10]) if fecha_txt else date.today()
+
+            tipo = tipos.get(nombre.lower())
+            if tipo is None:
+                max_id += 1
+                tipo = TipoCotizacion(max_id, nombre)
+                self.service.tipo_cotizacion_service.alta_tipo_cotizacion(tipo)
+                tipos[nombre.lower()] = tipo
+
+            cotizacion = CotizacionDolar(tipo=tipo, fecha=fecha, valor=float(valor))
+
+            existente = self.service.cotizacion_service.obtener_cotizacion(
+                tipo.id, fecha
+            )
+            if existente is None:
+                self.service.cotizacion_service.alta_cotizacion(cotizacion)
+            else:
+                self.service.cotizacion_service.modificar_cotizacion(cotizacion)
+            cotizaciones.append(cotizacion)
+        return cotizaciones

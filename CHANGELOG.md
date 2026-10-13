@@ -1,3 +1,7 @@
+[Ejercicio 07 - Sprint 2]
+- ServicioCotizacionDolar.obtener_cotizaciones para buscar, descargar y registrar cotizaciones.
+- Archivo .env.example con la URL de la API del dolar.
+
 [Ejercicio 06 - Sprint 2]
 - Repositorios reimplementados sobre SQLAlchemy conservando las interfaces CRUD.
 - Servicios y main adaptados para operar unicamente contra la base de datos.
