@@ -1,0 +1,10 @@
+INSERT INTO genero (id, nombre) VALUES (1, 'Novela');
+INSERT INTO genero (id, nombre) VALUES (2, 'Ensayo');
+INSERT INTO genero (id, nombre) VALUES (3, 'Infantil');
+INSERT INTO genero (id, nombre) VALUES (4, 'Técnico');
+INSERT INTO genero (id, nombre) VALUES (5, 'Ciencia Ficción');
+INSERT INTO genero (id, nombre) VALUES (6, 'Historia');
+INSERT INTO genero (id, nombre) VALUES (7, 'Biografía');
+INSERT INTO genero (id, nombre) VALUES (8, 'Poesía');
+INSERT INTO genero (id, nombre) VALUES (9, 'Policial');
+INSERT INTO genero (id, nombre) VALUES (10, 'Autoayuda');

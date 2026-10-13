@@ -1,3 +1,7 @@
+[Ejercicio 05 - Sprint 2]
+- Migracion de los CSV del Sprint 1 a la base de datos con la funcion migrar_datos.
+- Generacion de los archivos .sql con las sentencias de insercion en migrations/sql.
+
 [Ejercicio 04 - Sprint 2]
 - Modelos ORM de las ocho tablas con sus tipos de datos, claves primarias y foraneas.
 - Relaciones entre libros, editoriales, generos, monedas y cotizaciones.

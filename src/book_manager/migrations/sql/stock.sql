@@ -1,0 +1,10 @@
+INSERT INTO stock (libro_id, cantidad) VALUES (1, 12);
+INSERT INTO stock (libro_id, cantidad) VALUES (2, 8);
+INSERT INTO stock (libro_id, cantidad) VALUES (3, 4);
+INSERT INTO stock (libro_id, cantidad) VALUES (4, 15);
+INSERT INTO stock (libro_id, cantidad) VALUES (5, 6);
+INSERT INTO stock (libro_id, cantidad) VALUES (6, 9);
+INSERT INTO stock (libro_id, cantidad) VALUES (7, 3);
+INSERT INTO stock (libro_id, cantidad) VALUES (8, 11);
+INSERT INTO stock (libro_id, cantidad) VALUES (9, 5);
+INSERT INTO stock (libro_id, cantidad) VALUES (10, 14);

@@ -1,0 +1,10 @@
+INSERT INTO libro (id, isbn, titulo, autor, editorial_id, genero_id) VALUES (1, '978-950-07-0001-1', 'Cien años de soledad', 'Gabriel García Márquez', 1, 1);
+INSERT INTO libro (id, isbn, titulo, autor, editorial_id, genero_id) VALUES (2, '978-950-07-0002-2', 'El Aleph', 'Jorge Luis Borges', 7, 1);
+INSERT INTO libro (id, isbn, titulo, autor, editorial_id, genero_id) VALUES (3, '978-950-07-0003-3', 'Sobre héroes y tumbas', 'Ernesto Sabato', 1, 2);
+INSERT INTO libro (id, isbn, titulo, autor, editorial_id, genero_id) VALUES (4, '978-950-07-0004-4', 'Python para todos', 'Raúl González Duque', 4, 4);
+INSERT INTO libro (id, isbn, titulo, autor, editorial_id, genero_id) VALUES (5, '978-950-07-0005-5', 'Fundación', 'Isaac Asimov', 9, 5);
+INSERT INTO libro (id, isbn, titulo, autor, editorial_id, genero_id) VALUES (6, '978-950-07-0006-6', 'Breve historia del tiempo', 'Stephen Hawking', 2, 6);
+INSERT INTO libro (id, isbn, titulo, autor, editorial_id, genero_id) VALUES (7, '978-950-07-0007-7', 'Steve Jobs', 'Walter Isaacson', 3, 7);
+INSERT INTO libro (id, isbn, titulo, autor, editorial_id, genero_id) VALUES (8, '978-950-07-0008-8', 'Poesía completa', 'Alejandra Pizarnik', 5, 8);
+INSERT INTO libro (id, isbn, titulo, autor, editorial_id, genero_id) VALUES (9, '978-950-07-0009-9', 'La sombra del viento', 'Carlos Ruiz Zafón', 2, 9);
+INSERT INTO libro (id, isbn, titulo, autor, editorial_id, genero_id) VALUES (10, '978-950-07-0010-0', 'El poder del ahora', 'Eckhart Tolle', 8, 10);
