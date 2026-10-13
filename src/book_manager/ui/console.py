@@ -19,7 +19,7 @@ from book_manager.entities.entities import (
     Stock,
     TipoCotizacion,
 )
-from book_manager.services.services import LibreriaService
+from book_manager.services.services import LibreriaService, ServicioCotizacionDolar
 
 
 class ConsolaLibreria:
@@ -290,6 +290,36 @@ class ConsolaLibreria:
                 print(f"Error: {exc}")
                 self._pausa()
 
+    # --------------------- Menús de cotizaciones y precios -------------------
+    def menu_cotizaciones_api(self) -> None:
+        """Descarga las cotizaciones del dólar desde la API y las registra."""
+        cotizaciones = ServicioCotizacionDolar(self.service).obtener_cotizaciones()
+        self._listar("Cotizaciones descargadas", cotizaciones)
+        self._pausa()
+
+    def menu_precios_bimonetarios(self) -> None:
+        """Muestra los precios de los libros en pesos y en otra moneda."""
+        moneda = input("Código de moneda (ej: USD): ").strip()
+        filas = self.service.listar_precios_bimonetarios(moneda)
+        print("\n--- Precios bimonetarios (ARS / otra moneda) ---")
+        for fila in filas:
+            libro = fila["libro"]
+            monto_ars = fila["monto_ars"]
+            monto_moneda = fila["monto_moneda"]
+            print(
+                f"[{libro.id}] {libro.titulo} | "
+                f"ARS {monto_ars if monto_ars is not None else '-'} | "
+                f"{fila['moneda']} {monto_moneda if monto_moneda is not None else '-'}"
+            )
+        self._pausa()
+
+    def menu_exportar_precios(self) -> None:
+        """Exporta la lista de precios de todos los tipos de moneda a CSV."""
+        ruta = input("Ruta del archivo CSV (Enter para la predeterminada): ").strip()
+        destino = self.service.exportar_precios_csv(ruta or None)
+        print(f"Precios exportados a: {destino}")
+        self._pausa()
+
     # ------------------------------ Menú principal ---------------------------
     def ejecutar(self) -> None:
         while True:
@@ -303,6 +333,9 @@ class ConsolaLibreria:
             print("7. Stock")
             print("8. Cotizaciones")
             print("9. Reportes")
+            print("10. Obtener cotizaciones por API")
+            print("11. Precios bimonetarios")
+            print("12. Exportar precios a CSV")
             print("0. Salir")
 
             opcion = input("Seleccionar opción: ").strip()
@@ -324,6 +357,12 @@ class ConsolaLibreria:
                 self.menu_cotizaciones()
             elif opcion == "9":
                 self.menu_reportes()
+            elif opcion == "10":
+                self.menu_cotizaciones_api()
+            elif opcion == "11":
+                self.menu_precios_bimonetarios()
+            elif opcion == "12":
+                self.menu_exportar_precios()
             elif opcion == "0":
                 print("Saliendo...")
                 break

@@ -1,3 +1,8 @@
+[Ejercicio 08 - Sprint 2]
+- Menu para obtener las cotizaciones por API desde la consola.
+- Menu de precios bimonetarios en pesos y en la moneda seleccionada.
+- Menu para exportar los precios a CSV en todos los tipos de moneda.
+
 [Ejercicio 07 - Sprint 2]
 - ServicioCotizacionDolar.obtener_cotizaciones para buscar, descargar y registrar cotizaciones.
 - Archivo .env.example con la URL de la API del dolar.
