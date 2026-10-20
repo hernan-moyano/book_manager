@@ -22,12 +22,12 @@ COLUMNAS_POR_TABLA: Dict[str, List[str]] = {
     "libro": ["id", "isbn", "titulo", "autor", "editorial_id", "genero_id"],
     "precio": ["id", "libro_id", "moneda_id", "monto"],
     "stock": ["libro_id", "cantidad"],
-    "cotizacion_dolar": ["tipo_id", "fecha", "valor"],
+    "cotizacion_dolar": ["tipo_id", "fecha", "valor_compra", "valor_venta"],
 }
 
 COLUMNAS_ENTERAS = {"id", "editorial_id", "genero_id", "libro_id", "moneda_id",
                     "tipo_id", "cantidad"}
-COLUMNAS_DECIMALES = {"monto", "valor"}
+COLUMNAS_DECIMALES = {"monto", "valor", "valor_compra", "valor_venta"}
 
 
 def _leer_csv(ruta: Path) -> List[Dict[str, str]]:

@@ -11,6 +11,13 @@ En la segunda entrega se amplía el alcance de la aplicación de consola (CLI) d
 ## Configuración
 
 1. Instalar las dependencias: `pip install -r requirements.txt`.
-2. Copiar `.env.example` a `.env` y completar `DATABASE_URL` con la cadena del Session pooler de Supabase (PostgreSQL).
+2. Copiar `.env.example` a `.env` y completar `DATABASE_URL` con la cadena del Session pooler de Supabase (PostgreSQL) y `API_URL` con la URL de la API de cotizaciones del dólar. **El `.env` no se versiona** (está en `.gitignore`); solo se publica `.env.example`.
 3. Ejecutar la aplicación: `python -m book_manager.main` (con `PYTHONPATH=src`).
+
+## Decisiones de diseño relevantes
+
+- **Relaciones bidireccionales**: los modelos ORM declaran `back_populates`, de modo que se puede navegar de una editorial a sus libros (`editorial.libros`), de un libro a sus precios (`libro.precios`) y su stock (`libro.stock`), de una moneda a sus precios y de un tipo de cotización a su histórico (`tipo.cotizaciones`).
+- **Cotizaciones compra/venta**: cada registro de `CotizacionDolar` conserva los dos valores que informa la API (`valor_compra` y `valor_venta`); el valor de venta se usa como referencia de conversión.
+- **Configuración obligatoria**: la URL de la API no tiene valor por defecto en el código: si `API_URL` falta en el `.env`, se informa el error sin usar un valor hardcodeado. Los errores de red (sin conexión, timeout) se capturan y muestran sin cortar el programa.
+- **Precios bimonetarios**: el listado permite elegir el tipo de cotización a aplicar e informa en el encabezado el tipo, la fecha y el valor usados en la conversión.
 

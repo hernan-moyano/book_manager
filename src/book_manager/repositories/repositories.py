@@ -481,13 +481,19 @@ class RepositorioCotizacionDolarSQL(IRepositorioCotizacionDolar):
     @staticmethod
     def _a_modelo(cotizacion: CotizacionDolar) -> modelos.CotizacionDolar:
         return modelos.CotizacionDolar(
-            tipo_id=cotizacion.tipo_id, fecha=cotizacion.fecha, valor=cotizacion.valor
+            tipo_id=cotizacion.tipo_id,
+            fecha=cotizacion.fecha,
+            valor_compra=cotizacion.valor_compra,
+            valor_venta=cotizacion.valor_venta,
         )
 
     @staticmethod
     def _a_entidad(fila: modelos.CotizacionDolar) -> CotizacionDolar:
         return CotizacionDolar(
-            _tipo_entidad(fila.tipo), fila.fecha, float(fila.valor)
+            _tipo_entidad(fila.tipo),
+            fila.fecha,
+            float(fila.valor_compra),
+            float(fila.valor_venta),
         )
 
     def crear(self, cotizacion: CotizacionDolar) -> CotizacionDolar:
@@ -527,7 +533,8 @@ class RepositorioCotizacionDolarSQL(IRepositorioCotizacionDolar):
             fila = sesion.get(modelos.CotizacionDolar, (cotizacion.tipo_id, cotizacion.fecha))
             if fila is None:
                 raise ValueError("No existe la cotización solicitada")
-            fila.valor = cotizacion.valor
+            fila.valor_compra = cotizacion.valor_compra
+            fila.valor_venta = cotizacion.valor_venta
         return cotizacion
 
     def eliminar(self, tipo_id: int, fecha: datetime.date) -> bool:

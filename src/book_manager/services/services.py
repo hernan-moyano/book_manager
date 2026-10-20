@@ -525,42 +525,104 @@ class LibreriaService:
         return salida
 
     def cotizacion_hoy(self, tipo_id: int) -> Optional[float]:
-        """Valor de la cotización del día actual para el tipo indicado."""
+        """Valor de venta de la cotización del día actual para el tipo indicado.
+
+        Args:
+            tipo_id (int): Identificador del tipo de cotización.
+
+        Returns:
+            Optional[float]: Valor de venta del día, o None si no está cargado.
+        """
         item = self.cotizacion_service.obtener_cotizacion(tipo_id, date.today())
-        return None if item is None else item.valor
+        return None if item is None else item.valor_venta
 
     # -------------------- Precios bimonetarios y exportación -----------------
     def _moneda_por_codigo(self, codigo: str) -> Optional[Moneda]:
-        """Busca una moneda por su código (en mayúsculas) o None si no existe."""
+        """Busca una moneda por su código (en mayúsculas) o None si no existe.
+
+        Args:
+            codigo (str): Código de la moneda (por ejemplo ``USD``).
+
+        Returns:
+            Optional[Moneda]: La moneda encontrada o None.
+        """
         codigo_normalizado = codigo.strip().upper()
         for moneda in self.moneda_service.listar_monedas():
             if moneda.codigo == codigo_normalizado:
                 return moneda
         return None
 
-    def _cotizacion_oficial_hoy(self) -> Optional[float]:
-        """Cotización del día para el tipo 'Oficial' si está cargada."""
-        for tipo in self.tipo_cotizacion_service.listar_tipos_cotizacion():
-            if tipo.nombre.strip().lower() == "oficial":
-                item = self.cotizacion_service.obtener_cotizacion(tipo.id, date.today())
-                return None if item is None else item.valor
-        for cotizacion in self.cotizacion_service.listar_cotizaciones():
-            if cotizacion.fecha == date.today():
-                return cotizacion.valor
-        return None
+    def _cotizacion_aplicable(
+        self, tipo_id: Optional[int] = None
+    ) -> Optional[CotizacionDolar]:
+        """Resuelve la cotización a aplicar para las conversiones.
 
-    def listar_precios_bimonetarios(self, codigo_moneda: str) -> List[Dict[str, object]]:
-        """Lista cada libro con su precio en ARS y su precio en otra moneda.
+        Busca primero la cotización del día del tipo indicado (o del tipo
+        'Oficial' si no se indica ninguno); si no hay registro del día, usa
+        el registro más reciente disponible de ese tipo.
 
-        Si el libro no tiene precio cargado en la moneda destino, se usa la
-        cotización del dólar del día (dentro de lo que permite el modelo de
-        datos) como referencia de conversión del precio en pesos.
+        Args:
+            tipo_id (Optional[int]): Identificador del tipo de cotización a
+                aplicar. Si es None se intenta con el tipo 'Oficial'.
+
+        Returns:
+            Optional[CotizacionDolar]: La cotización aplicable o None si el
+                tipo no tiene ningún registro.
+        """
+        tipos = self.tipo_cotizacion_service.listar_tipos_cotizacion()
+        tipo: Optional[TipoCotizacion] = None
+        if tipo_id is not None:
+            tipo = self.tipo_cotizacion_service.obtener_tipo_cotizacion(tipo_id)
+            if tipo is None:
+                raise ValueError(f"No existe el tipo de cotización con id={tipo_id}")
+        else:
+            for t in tipos:
+                if t.nombre.strip().lower() == "oficial":
+                    tipo = t
+                    break
+        if tipo is None:
+            return None
+
+        cotizacion = self.cotizacion_service.obtener_cotizacion(tipo.id, date.today())
+        if cotizacion is not None:
+            return cotizacion
+        historico = self.cotizacion_service.listar_cotizaciones(tipo.id)
+        return historico[-1] if historico else None
+
+    def listar_precios_bimonetarios(
+        self, codigo_moneda: str, tipo_cotizacion_id: Optional[int] = None
+    ) -> List[Dict[str, object]]:
+        """Lista cada libro con su precio en ARS y en la moneda indicada.
+
+        Si el libro no tiene precio cargado en la moneda destino, convierte
+        su precio en pesos con la cotización (valor de venta) del tipo
+        elegido. La fila resultante informa qué tipo de cotización, fecha y
+        valor se aplicaron en la conversión.
+
+        Args:
+            codigo_moneda (str): Código de la moneda destino (por ejemplo
+                ``USD``).
+            tipo_cotizacion_id (Optional[int]): Tipo de cotización a aplicar
+                en la conversión. Si es None se usa el tipo 'Oficial'.
+
+        Returns:
+            List[Dict[str, object]]: Una fila por libro con las claves
+                ``libro``, ``moneda``, ``monto_ars``, ``monto_moneda``,
+                ``cotizacion_tipo``, ``cotizacion_fecha`` y
+                ``cotizacion_valor``.
+
+        Raises:
+            ValueError: Si la moneda o el tipo de cotización no existen.
         """
         moneda_destino = self._moneda_por_codigo(codigo_moneda)
         if moneda_destino is None:
             raise ValueError(f"No existe la moneda con código '{codigo_moneda}'")
         moneda_ars = self._moneda_por_codigo("ARS")
-        cotizacion_hoy = self._cotizacion_oficial_hoy()
+        cotizacion = self._cotizacion_aplicable(tipo_cotizacion_id)
+
+        cotizacion_tipo = cotizacion.tipo.nombre if cotizacion else None
+        cotizacion_fecha = cotizacion.fecha if cotizacion else None
+        cotizacion_valor = cotizacion.valor_venta if cotizacion else None
 
         filas: List[Dict[str, object]] = []
         for libro in self.libro_service.listar_libros():
@@ -579,17 +641,20 @@ class LibreriaService:
                     precio_destino = precio.monto
 
             monto_moneda = precio_destino
-            if monto_moneda is None and precio_ars is not None and cotizacion_hoy:
+            if monto_moneda is None and precio_ars is not None and cotizacion_valor:
                 if moneda_destino.codigo == "ARS":
                     monto_moneda = precio_ars
                 else:
-                    monto_moneda = round(precio_ars / cotizacion_hoy, 2)
+                    monto_moneda = round(precio_ars / cotizacion_valor, 2)
             filas.append(
                 {
                     "libro": libro,
                     "moneda": moneda_destino.codigo,
                     "monto_ars": precio_ars,
                     "monto_moneda": monto_moneda,
+                    "cotizacion_tipo": cotizacion_tipo,
+                    "cotizacion_fecha": cotizacion_fecha,
+                    "cotizacion_valor": cotizacion_valor,
                 }
             )
         return filas
@@ -639,21 +704,58 @@ class LibreriaService:
 class ServicioCotizacionDolar:
     """Sprint 2: descarga las cotizaciones del dólar y las registra en la base.
 
-    Consume la API pública de dólar y registra las
-    cotizaciones del día en el sistema reutilizando los servicios del dominio.
+    Consume la API pública del dólar (configurada con la variable de entorno
+    ``API_URL`` del archivo ``.env``) y registra las cotizaciones del día,
+    conservando los valores de compra y de venta de cada tipo.
     """
 
-    API_URL_POR_DEFECTO = "https://dolarapi.com/v1/dolares"
-
     def __init__(self, service: LibreriaService) -> None:
+        """Inyecta el servicio de la librería sobre el que se registran los datos.
+
+        Args:
+            service (LibreriaService): Servicio orquestador del dominio.
+        """
         self.service = service
 
-    def obtener_cotizaciones(self) -> List[CotizacionDolar]:
-        """Descarga las cotizaciones desde la API y las registra en la base."""
-        url = os.environ.get("API_URL", self.API_URL_POR_DEFECTO).strip()
+    def _resolver_url(self) -> str:
+        """Obtiene la URL de la API desde la variable de entorno ``API_URL``.
+
+        La URL es obligatoria: no hay un valor por defecto en el código, de
+        modo que el archivo ``.env`` sea la única fuente de configuración.
+
+        Returns:
+            str: URL configurada de la API del dólar.
+
+        Raises:
+            ValueError: Si ``API_URL`` no está definida o está vacía.
+        """
+        url = os.environ.get("API_URL", "").strip()
         if not url:
-            url = self.API_URL_POR_DEFECTO
-        respuesta = requests.get(url, timeout=15)
+            raise ValueError(
+                "API_URL no está definida. Configurá la variable API_URL en el "
+                "archivo .env con la URL de la API del dólar."
+            )
+        return url
+
+    def _descargar(self, url: str) -> List[Dict[str, object]]:
+        """Descarga y valida la respuesta JSON de la API del dólar.
+
+        Args:
+            url (str): URL de la API del dólar.
+
+        Returns:
+            List[Dict[str, object]]: Lista de cotizaciones crudas de la API.
+
+        Raises:
+            ValueError: Si la API responde con error de red, un estado HTTP
+                distinto de 200 o un cuerpo JSON inválido.
+        """
+        try:
+            respuesta = requests.get(url, timeout=15)
+        except requests.RequestException as exc:
+            raise ValueError(
+                f"No se pudo conectar con la API del dólar ({exc.__class__.__name__}: {exc})"
+            ) from exc
         if respuesta.status_code != 200:
             raise ValueError(
                 f"La API del dólar respondió con estado {respuesta.status_code}"
@@ -664,6 +766,24 @@ class ServicioCotizacionDolar:
             raise ValueError("La API del dólar no devolvió un JSON válido") from exc
         if not isinstance(datos, list):
             raise ValueError("La API del dólar no devolvió una lista de cotizaciones")
+        return datos
+
+    def obtener_cotizaciones(self) -> List[CotizacionDolar]:
+        """Descarga las cotizaciones desde la API y las registra en la base.
+
+        Crea los tipos de cotización que la API informe y no existan, y para
+        cada tipo guarda (o actualiza si ya estaba cargada) la cotización del
+        día con sus valores de compra y venta.
+
+        Returns:
+            List[CotizacionDolar]: Cotizaciones registradas en la base.
+
+        Raises:
+            ValueError: Si falta la configuración, falla la comunicación con
+                la API o los datos recibidos son inválidos.
+        """
+        url = self._resolver_url()
+        datos = self._descargar(url)
 
         tipos = {
             t.nombre.strip().lower(): t
@@ -677,9 +797,15 @@ class ServicioCotizacionDolar:
         cotizaciones: List[CotizacionDolar] = []
         for item in datos:
             nombre = (item.get("nombre") or "Desconocido").strip()
-            valor = item.get("venta") or item.get("compra")
-            if valor is None:
+            compra = item.get("compra")
+            venta = item.get("venta")
+            if compra is None and venta is None:
                 continue
+            # Si la API informa un solo valor, se replica en ambos campos.
+            if compra is None:
+                compra = venta
+            if venta is None:
+                venta = compra
             fecha_txt = item.get("fecha") or item.get("fechaActualizacion") or ""
             fecha = date.fromisoformat(fecha_txt[:10]) if fecha_txt else date.today()
 
@@ -690,7 +816,12 @@ class ServicioCotizacionDolar:
                 self.service.tipo_cotizacion_service.alta_tipo_cotizacion(tipo)
                 tipos[nombre.lower()] = tipo
 
-            cotizacion = CotizacionDolar(tipo=tipo, fecha=fecha, valor=float(valor))
+            cotizacion = CotizacionDolar(
+                tipo=tipo,
+                fecha=fecha,
+                valor_compra=float(compra),
+                valor_venta=float(venta),
+            )
 
             existente = self.service.cotizacion_service.obtener_cotizacion(
                 tipo.id, fecha

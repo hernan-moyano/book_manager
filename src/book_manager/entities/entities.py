@@ -311,12 +311,23 @@ class Stock:
 
 
 class CotizacionDolar:
-    """Registro histórico de cotización por tipo y fecha."""
+    """Registro histórico de cotización por tipo y fecha.
 
-    def __init__(self, tipo: TipoCotizacion, fecha: date, valor: float) -> None:
+    Conserva los dos valores que informa la API del dólar: el valor de
+    compra y el valor de venta.
+    """
+
+    def __init__(
+        self,
+        tipo: TipoCotizacion,
+        fecha: date,
+        valor_compra: float,
+        valor_venta: float,
+    ) -> None:
         self.tipo = tipo
         self.fecha = fecha
-        self.valor = valor
+        self.valor_compra = valor_compra
+        self.valor_venta = valor_venta
 
     @property
     def tipo(self) -> TipoCotizacion:
@@ -343,22 +354,41 @@ class CotizacionDolar:
         self._fecha = valor
 
     @property
-    def valor(self) -> float:
-        return self._valor
+    def valor_compra(self) -> float:
+        return self._valor_compra
 
-    @valor.setter
-    def valor(self, valor: float) -> None:
+    @valor_compra.setter
+    def valor_compra(self, valor: float) -> None:
         if valor <= 0:
-            raise ValueError("La cotización debe ser mayor a cero")
-        self._valor = float(valor)
+            raise ValueError("La cotización de compra debe ser mayor a cero")
+        self._valor_compra = float(valor)
+
+    @property
+    def valor_venta(self) -> float:
+        return self._valor_venta
+
+    @valor_venta.setter
+    def valor_venta(self, valor: float) -> None:
+        if valor <= 0:
+            raise ValueError("La cotización de venta debe ser mayor a cero")
+        self._valor_venta = float(valor)
+
+    @property
+    def valor(self) -> float:
+        """Valor de venta (referencia principal para conversiones)."""
+        return self._valor_venta
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "tipo_id": self.tipo.id,
             "tipo": self.tipo.nombre,
             "fecha": self.fecha.isoformat(),
-            "valor": self.valor,
+            "valor_compra": self.valor_compra,
+            "valor_venta": self.valor_venta,
         }
 
     def __str__(self) -> str:
-        return f"Tipo={self.tipo.nombre} Fecha={self.fecha.isoformat()} Valor=${self.valor:.2f}"
+        return (
+            f"Tipo={self.tipo.nombre} Fecha={self.fecha.isoformat()} "
+            f"Compra=${self.valor_compra:.2f} Venta=${self.valor_venta:.2f}"
+        )

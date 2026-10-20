@@ -142,7 +142,12 @@ def generar_csv_demo(base_dir: str = str(RUTA_CSV_POR_DEFECTO)) -> Path:
     ]
     hoy = date.today()
     cotizaciones = [
-        {"tipo_id": i, "fecha": (hoy - timedelta(days=i - 1)).isoformat(), "valor": float(900 + (i - 1) * 12)}
+        {
+            "tipo_id": i,
+            "fecha": (hoy - timedelta(days=i - 1)).isoformat(),
+            "valor_compra": float(880 + (i - 1) * 12),
+            "valor_venta": float(900 + (i - 1) * 12),
+        }
         for i in range(1, 11)
     ]
 
@@ -233,6 +238,7 @@ def cargar_datos_desde_csv(
                     CotizacionDolar(
                         tipo,
                         f_date,
-                        float(row["valor"]),
+                        float(row["valor_compra"]),
+                        float(row["valor_venta"]),
                     )
                 )

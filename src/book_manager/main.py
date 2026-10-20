@@ -31,18 +31,22 @@ def crear_app(import_default_data: bool = True) -> LibreriaService:
     return LibreriaService.crear_con_base_de_datos(conexion)
 
 
-def main(
-    import_default_data: bool = True, interactive: bool = True
-) -> LibreriaService:
+def main(import_default_data: bool = True, interactive: bool = True) -> None:
     """Inicia la aplicación.
 
     ``interactive=False`` permite validar el notebook con "Ejecutar todo"
-    sin bloquear la ejecución esperando entradas del usuario.
+    sin bloquear la ejecución esperando entradas del usuario. La función no
+    devuelve ningún objeto para que su ejecución en el notebook no imprima
+    la representación del servicio al final de la salida.
+
+    Args:
+        import_default_data (bool): Migra los CSV a la base de datos si está
+            vacía.
+        interactive (bool): Si es True arranca la consola interactiva.
     """
     service = crear_app(import_default_data=import_default_data)
     if interactive:
         ConsolaLibreria(service).ejecutar()
-    return service
 
 
 if __name__ == "__main__":

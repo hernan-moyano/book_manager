@@ -1,10 +1,28 @@
+[Correcciones de observaciones - Sprint 2]
+- Ej 01: se quito del repositorio el .env con credenciales (queda solo .env.example)
+  y se restauro su exclusion en .gitignore.
+- Ej 04: relaciones ORM bidireccionales con back_populates (editorial.libros,
+  genero.libros, libro.precios, libro.stock, moneda.precios, tipo.cotizaciones).
+- Ej 07: la URL de la API es obligatoria desde .env (sin valor por defecto en el
+  codigo); CotizacionDolar guarda valor de compra y de venta (entidad, modelo ORM,
+  migracion, CSV y SQL); se capturan los errores de red de la API sin cortar el programa.
+- Ej 08: el listado bimonetario permite elegir el tipo de cotizacion e informa el
+  tipo, la fecha y el valor aplicados; la demo usa las opciones 10, 11 y 12.
+- Ej 06: la ejecucion del notebook muestra un listado y un alta/modificacion de
+  cada uno de los 8 modelos.
+- main() ya no devuelve el servicio (no imprime <LibreriaService at ...> en el notebook).
+- Docstrings PEP 257 (Args/Returns/Raises) en todos los modulos.
+
 [Ejercicio 08 - Sprint 2]
 - Menu para obtener las cotizaciones por API desde la consola.
-- Menu de precios bimonetarios en pesos y en la moneda seleccionada.
+- Menu de precios bimonetarios en pesos y en la moneda seleccionada, con tipo de
+  cotizacion elegible y cotizacion aplicada informada.
 - Menu para exportar los precios a CSV en todos los tipos de moneda.
 
 [Ejercicio 07 - Sprint 2]
-- ServicioCotizacionDolar.obtener_cotizaciones para buscar, descargar y registrar cotizaciones.
+- ServicioCotizacionDolar.obtener_cotizaciones para buscar, descargar y registrar
+  cotizaciones (valor de compra y de venta), con URL obligatoria desde .env y
+  manejo controlado de errores de red.
 - Archivo .env.example con la URL de la API del dolar.
 
 [Ejercicio 06 - Sprint 2]

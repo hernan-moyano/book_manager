@@ -26,11 +26,23 @@ class ConsolaLibreria:
     """Menús de consola para operar el CRUD de cada entidad del sistema."""
 
     def __init__(self, service: LibreriaService) -> None:
+        """Inyecta el servicio de la librería que operan los menús.
+
+        Args:
+            service (LibreriaService): Servicio orquestador del dominio.
+        """
         self.service = service
 
     # --------------------------- Utilidades de E/S ---------------------------
     def _leer_int(self, texto: str) -> int:
-        """Lee un entero por consola reintentando de forma segura ante errores."""
+        """Lee un entero por consola reintentando de forma segura ante errores.
+
+        Args:
+            texto (str): Mensaje a mostrar al usuario.
+
+        Returns:
+            int: El entero ingresado.
+        """
         while True:
             valor = input(texto).strip()
             try:
@@ -39,7 +51,14 @@ class ConsolaLibreria:
                 print("Entrada inválida: debe ingresar un número entero.")
 
     def _leer_float(self, texto: str) -> float:
-        """Lee un flotante por consola reintentando de forma segura ante errores."""
+        """Lee un flotante por consola reintentando de forma segura ante errores.
+
+        Args:
+            texto (str): Mensaje a mostrar al usuario.
+
+        Returns:
+            float: El número ingresado.
+        """
         while True:
             valor = input(texto).strip()
             try:
@@ -48,7 +67,14 @@ class ConsolaLibreria:
                 print("Entrada inválida: debe ingresar un número decimal válido.")
 
     def _leer_fecha(self, texto: str) -> date:
-        """Lee una fecha en formato YYYY-MM-DD reintentando de forma segura."""
+        """Lee una fecha en formato YYYY-MM-DD reintentando de forma segura.
+
+        Args:
+            texto (str): Mensaje a mostrar al usuario.
+
+        Returns:
+            date: La fecha ingresada.
+        """
         while True:
             valor = input(texto).strip()
             try:
@@ -57,9 +83,16 @@ class ConsolaLibreria:
                 print("Formato de fecha inválido. Ingrese una fecha válida con formato AAAA-MM-DD.")
 
     def _pausa(self) -> None:
+        """Detiene la salida hasta que el usuario presione Enter."""
         input("\nEnter para continuar...")
 
     def _listar(self, nombre: str, items: List[object]) -> None:
+        """Imprime un listado con título, o un aviso si está vacío.
+
+        Args:
+            nombre (str): Título del listado.
+            items (List[object]): Elementos a imprimir (uno por línea).
+        """
         print(f"\n--- {nombre} ---")
         if not items:
             print("Sin registros")
@@ -76,6 +109,18 @@ class ConsolaLibreria:
         eliminar_cb: Callable[[], object],
         listar_cb: Callable[[], List[object]],
     ) -> None:
+        """Ejecuta el ciclo del menú CRUD genérico de una entidad.
+
+        Captura los errores de validación (``ValueError``/``TypeError``) de
+        las operaciones para que un dato mal ingresado no corte el programa.
+
+        Args:
+            titulo (str): Nombre de la entidad mostrado en el menú.
+            crear_cb (Callable[[], object]): Operación de alta.
+            actualizar_cb (Callable[[], object]): Operación de modificación.
+            eliminar_cb (Callable[[], object]): Operación de borrado.
+            listar_cb (Callable[[], List[object]]): Operación de listado.
+        """
         while True:
             print(f"\n{titulo}: 1-Listar 2-Alta 3-Modificar 4-Borrar 0-Volver")
             op = input("Opción: ").strip()
@@ -105,6 +150,7 @@ class ConsolaLibreria:
 
     # ---------------------------- Menús por entidad --------------------------
     def menu_generos(self) -> None:
+        """Menú CRUD de géneros literarios."""
         self._menu_crud_basico(
             "Géneros",
             lambda: self.service.alta_genero(
@@ -118,6 +164,7 @@ class ConsolaLibreria:
         )
 
     def menu_editoriales(self) -> None:
+        """Menú CRUD de editoriales."""
         self._menu_crud_basico(
             "Editoriales",
             lambda: self.service.alta_editorial(
@@ -131,6 +178,7 @@ class ConsolaLibreria:
         )
 
     def menu_monedas(self) -> None:
+        """Menú CRUD de monedas."""
         self._menu_crud_basico(
             "Monedas",
             lambda: self.service.alta_moneda(
@@ -152,6 +200,7 @@ class ConsolaLibreria:
         )
 
     def menu_tipos_cotizacion(self) -> None:
+        """Menú CRUD de tipos de cotización."""
         self._menu_crud_basico(
             "Tipos de cotización",
             lambda: self.service.alta_tipo_cotizacion(
@@ -165,6 +214,18 @@ class ConsolaLibreria:
         )
 
     def _construir_libro_desde_input(self, id_existente: int | None = None) -> Libro:
+        """Arma un libro a partir de los datos ingresados por el usuario.
+
+        Args:
+            id_existente (int | None): ID a reutilizar en una modificación;
+                si es None se solicita por consola.
+
+        Returns:
+            Libro: El libro construido con su editorial y género por objeto.
+
+        Raises:
+            ValueError: Si la editorial o el género indicados no existen.
+        """
         libro_id = id_existente if id_existente is not None else self._leer_int("ID: ")
         isbn = input("ISBN: ").strip()
         titulo = input("Título: ").strip()
@@ -187,6 +248,7 @@ class ConsolaLibreria:
         )
 
     def menu_libros(self) -> None:
+        """Menú CRUD de libros."""
         self._menu_crud_basico(
             "Libros",
             lambda: self.service.alta_libro(self._construir_libro_desde_input()),
@@ -196,6 +258,18 @@ class ConsolaLibreria:
         )
 
     def _construir_precio_desde_input(self, id_existente: int | None = None) -> Precio:
+        """Arma un precio a partir de los datos ingresados por el usuario.
+
+        Args:
+            id_existente (int | None): ID a reutilizar en una modificación;
+                si es None se solicita por consola.
+
+        Returns:
+            Precio: El precio construido con su libro y moneda por objeto.
+
+        Raises:
+            ValueError: Si el libro o la moneda indicados no existen.
+        """
         precio_id = id_existente if id_existente is not None else self._leer_int("ID: ")
         libro_id = self._leer_int("Libro ID: ")
         libro = self.service.libro_service.obtener_libro(libro_id)
@@ -209,6 +283,7 @@ class ConsolaLibreria:
         return Precio(id=precio_id, libro=libro, moneda=moneda, monto=monto)
 
     def menu_precios(self) -> None:
+        """Menú CRUD de precios."""
         self._menu_crud_basico(
             "Precios",
             lambda: self.service.alta_precio(self._construir_precio_desde_input()),
@@ -218,6 +293,14 @@ class ConsolaLibreria:
         )
 
     def _construir_stock_desde_input(self) -> Stock:
+        """Arma un registro de stock a partir de los datos ingresados.
+
+        Returns:
+            Stock: El stock construido con su libro por objeto.
+
+        Raises:
+            ValueError: Si el libro indicado no existe.
+        """
         libro_id = self._leer_int("Libro ID: ")
         libro = self.service.libro_service.obtener_libro(libro_id)
         if libro is None:
@@ -226,6 +309,7 @@ class ConsolaLibreria:
         return Stock(libro=libro, cantidad=cantidad)
 
     def menu_stock(self) -> None:
+        """Menú CRUD de stock."""
         self._menu_crud_basico(
             "Stock",
             lambda: self.service.alta_stock(self._construir_stock_desde_input()),
@@ -235,15 +319,30 @@ class ConsolaLibreria:
         )
 
     def _construir_cotizacion_desde_input(self) -> CotizacionDolar:
+        """Arma una cotización a partir de los datos ingresados por el usuario.
+
+        Returns:
+            CotizacionDolar: La cotización construida y validada.
+
+        Raises:
+            ValueError: Si el tipo de cotización indicado no existe.
+        """
         tipo_id = self._leer_int("Tipo ID: ")
         tipo = self.service.tipo_cotizacion_service.obtener_tipo_cotizacion(tipo_id)
         if tipo is None:
             raise ValueError(f"No existe el tipo de cotización con ID {tipo_id}")
         fecha = self._leer_fecha("Fecha (YYYY-MM-DD): ")
-        valor = self._leer_float("Valor: ")
-        return CotizacionDolar(tipo=tipo, fecha=fecha, valor=valor)
+        valor_compra = self._leer_float("Valor de compra: ")
+        valor_venta = self._leer_float("Valor de venta: ")
+        return CotizacionDolar(
+            tipo=tipo,
+            fecha=fecha,
+            valor_compra=valor_compra,
+            valor_venta=valor_venta,
+        )
 
     def menu_cotizaciones(self) -> None:
+        """Menú CRUD de cotizaciones del dólar."""
         self._menu_crud_basico(
             "Cotizaciones",
             lambda: self.service.alta_cotizacion(
@@ -260,6 +359,7 @@ class ConsolaLibreria:
         )
 
     def menu_reportes(self) -> None:
+        """Menú de reportes: stock bajo y libros agrupados por género."""
         while True:
             print("\n--- Reportes ---")
             print("1. Stock bajo")
@@ -292,16 +392,68 @@ class ConsolaLibreria:
 
     # --------------------- Menús de cotizaciones y precios -------------------
     def menu_cotizaciones_api(self) -> None:
-        """Descarga las cotizaciones del dólar desde la API y las registra."""
-        cotizaciones = ServicioCotizacionDolar(self.service).obtener_cotizaciones()
+        """Descarga las cotizaciones del dólar desde la API y las registra.
+
+        Captura los errores de configuración, red y formato de la API para
+        que un fallo externo no interrumpa la ejecución del programa.
+        """
+        try:
+            cotizaciones = ServicioCotizacionDolar(self.service).obtener_cotizaciones()
+        except ValueError as exc:
+            print(f"Error al obtener las cotizaciones: {exc}")
+            self._pausa()
+            return
         self._listar("Cotizaciones descargadas", cotizaciones)
         self._pausa()
 
+    def _elegir_tipo_cotizacion(self) -> int | None:
+        """Muestra los tipos de cotización disponibles y deja elegir uno.
+
+        Returns:
+            int | None: El ID del tipo elegido, o None si se presiona Enter
+                para usar el tipo 'Oficial'.
+
+        Raises:
+            ValueError: Si el ID elegido no corresponde a un tipo existente.
+        """
+        tipos = self.service.listar_tipos_cotizacion()
+        print("\nTipos de cotización disponibles:")
+        for tipo in tipos:
+            print(f"  [{tipo.id}] {tipo.nombre}")
+        entrada = input("Tipo de cotización a aplicar (Enter = Oficial): ").strip()
+        if not entrada:
+            return None
+        tipo_id = int(entrada)
+        if self.service.tipo_cotizacion_service.obtener_tipo_cotizacion(tipo_id) is None:
+            raise ValueError(f"No existe el tipo de cotización con ID {tipo_id}")
+        return tipo_id
+
     def menu_precios_bimonetarios(self) -> None:
-        """Muestra los precios de los libros en pesos y en otra moneda."""
-        moneda = input("Código de moneda (ej: USD): ").strip()
-        filas = self.service.listar_precios_bimonetarios(moneda)
+        """Muestra los precios de los libros en pesos y en la moneda elegida.
+
+        Permite elegir el tipo de cotización usado en la conversión e informa
+        en el encabezado qué tipo, fecha y valor se aplicaron.
+        """
+        try:
+            moneda = input("Código de moneda (ej: USD): ").strip()
+            tipo_id = self._elegir_tipo_cotizacion()
+            filas = self.service.listar_precios_bimonetarios(moneda, tipo_id)
+        except (ValueError, TypeError) as exc:
+            print(f"Error: {exc}")
+            self._pausa()
+            return
+
+        cot_tipo = filas[0]["cotizacion_tipo"] if filas else None
+        cot_fecha = filas[0]["cotizacion_fecha"] if filas else None
+        cot_valor = filas[0]["cotizacion_valor"] if filas else None
         print("\n--- Precios bimonetarios (ARS / otra moneda) ---")
+        if cot_tipo is not None:
+            print(
+                f"Cotización aplicada: {cot_tipo} del {cot_fecha} "
+                f"(venta ${cot_valor:.2f})"
+            )
+        else:
+            print("Cotización aplicada: ninguna disponible (sin conversión)")
         for fila in filas:
             libro = fila["libro"]
             monto_ars = fila["monto_ars"]
@@ -322,6 +474,7 @@ class ConsolaLibreria:
 
     # ------------------------------ Menú principal ---------------------------
     def ejecutar(self) -> None:
+        """Ejecuta el ciclo del menú principal hasta que el usuario salga."""
         while True:
             print("\n=== Book Manager ===")
             print("1. Géneros")
