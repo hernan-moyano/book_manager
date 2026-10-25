@@ -1,4 +1,4 @@
-# Book Manager - Sprint 2
+# Book Manager - Sprint 3
 # Dependencias del proyecto.
 #
 # Requisito: Python >= 3.10
@@ -15,6 +15,15 @@ python-dotenv>=1.0
 #
 # Cliente HTTP para consultar la API de cotizaciones del dolar.
 requests>=2.31
+#
+# Sprint 3: scraping del sitio de Cúspide y reportes.
+# Framework de scraping (spider, loaders y pipelines).
+Scrapy>=2.11
+# ItemLoader y procesadores de campos para Scrapy.
+itemloaders>=1.0
+# Generacion del reporte de comparacion de precios en formato Excel.
+pandas>=2.0
+openpyxl>=3.1
 #
 # Instalacion:
 #   pip install -r requirements.txt

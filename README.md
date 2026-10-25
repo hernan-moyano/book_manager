@@ -1,12 +1,12 @@
-# Book Manager - Sprint 2
+# Book Manager - Sprint 3
 
 ## Objetivo
 
-Consolidar las bases de manejo de bases de datos relacionales, normalización, conexión segura y carga inicial, migrando la persistencia en archivos del Sprint 1 a una base de datos PostgreSQL alojada en Supabase mediante SQLAlchemy, e incorporando consultas a APIs externas.
+Descargar y obtener datos de la web para trabajar con ellos: consultar los precios de un competidor con venta online ([Cúspide](https://www.cuspide.com/)) para los libros del catálogo propio, compararlos con los precios internos, generar alertas y reportes, y auditar todas las operaciones del sistema.
 
 ## Introducción y contexto
 
-En la segunda entrega se amplía el alcance de la aplicación de consola (CLI) desarrollada en el Sprint 1: todos los datos que vivían en archivos CSV pasan a persistir en una base de datos relacional PostgreSQL (proyecto de [Supabase](https://supabase.com/)). Para ello se utiliza el ORM [SQLAlchemy](https://www.sqlalchemy.org/) junto con el driver `psycopg2`, definiendo tablas con sus tipos de datos y relaciones, un contexto de transacciones y una migración que genera las sentencias SQL de inserción a partir de los CSV originales. La conexión se realiza por el Session pooler de Supabase (puerto 5432, `sslmode=require`) y la URL se lee desde la variable de entorno `DATABASE_URL` del archivo `.env` (no versionado). Además, el sistema consulta una API externa de cotizaciones del dólar para registrar valores actualizados y ofrecer reportes de precios bimonetarios y su exportación a CSV.
+La tercera entrega parte del último push del Sprint 2 (persistencia en PostgreSQL/Supabase con SQLAlchemy y consulta de la API del dólar) y le agrega web scraping con [Scrapy](https://scrapy.org/). El spider `CuspideSpider` busca en Cúspide **solo los libros del catálogo interno**, tomando como máximo los 10 primeros resultados de cada búsqueda por título, y extrae el precio, la URL de la imagen, las formas de pago y la descripción detallada usando `ItemLoader` y un pipeline que guarda los resultados en JSON Lines. Con esos datos el sistema compara el precio interno con el precio web, genera un CSV de alertas según la diferencia porcentual que ingresa el usuario y un reporte Excel con la comparación. Además, un decorador registra cada operación en la tabla `auditoria` (acción, fecha y detalles), que puede consultarse desde el menú.
 
 ## Configuración
 
@@ -14,10 +14,18 @@ En la segunda entrega se amplía el alcance de la aplicación de consola (CLI) d
 2. Copiar `.env.example` a `.env` y completar `DATABASE_URL` con la cadena del Session pooler de Supabase (PostgreSQL) y `API_URL` con la URL de la API de cotizaciones del dólar. **El `.env` no se versiona** (está en `.gitignore`); solo se publica `.env.example`.
 3. Ejecutar la aplicación: `python -m book_manager.main` (con `PYTHONPATH=src`).
 
+## Opciones del Sprint 3
+
+- **13. Ejecutar scraping**: pide la diferencia porcentual de alerta, consulta Cúspide y genera `reportes/alertas_precios.csv`.
+- **14. Generar reporte**: genera `reportes/reporte_comparacion_precios.xlsx` con Libro, Moneda, Precio interno, Precio web, Diferencia y Fecha de extracción.
+- **15. Ver historial de auditoría**: lista las operaciones registradas, de la más reciente a la más antigua.
+
 ## Decisiones de diseño relevantes
 
-- **Relaciones bidireccionales**: los modelos ORM declaran `back_populates`, de modo que se puede navegar de una editorial a sus libros (`editorial.libros`), de un libro a sus precios (`libro.precios`) y su stock (`libro.stock`), de una moneda a sus precios y de un tipo de cotización a su histórico (`tipo.cotizaciones`).
-- **Cotizaciones compra/venta**: cada registro de `CotizacionDolar` conserva los dos valores que informa la API (`valor_compra` y `valor_venta`); el valor de venta se usa como referencia de conversión.
-- **Configuración obligatoria**: la URL de la API no tiene valor por defecto en el código: si `API_URL` falta en el `.env`, se informa el error sin usar un valor hardcodeado. Los errores de red (sin conexión, timeout) se capturan y muestran sin cortar el programa.
-- **Precios bimonetarios**: el listado permite elegir el tipo de cotización a aplicar e informa en el encabezado el tipo, la fecha y el valor usados en la conversión.
-
+- **Scraping en subproceso**: el spider se ejecuta con `scraper/runner.py` en un proceso de Python aparte, con su propio reactor de Twisted, para que funcione igual en Colab/Jupyter, en consola y en Windows.
+- **Búsqueda acotada al catálogo**: cada libro se busca por título y, de los 10 primeros resultados, solo se descargan las fichas cuyo título (80 % de las palabras) y autor coinciden con el catálogo, ya que en Cúspide hay libros homónimos de distintos autores. El autor se vuelve a confirmar en la ficha. Si ninguna ficha coincide, se hace una única búsqueda de respaldo por el ISBN normalizado.
+- **Pipelines en cadena**: `ValidarLibroPipeline` descarta las fichas sin precio o repetidas y `JsonLinesPipeline` guarda las válidas; cada ítem registra su fecha de extracción, que es la que muestra el reporte.
+- **Precio web del competidor**: Cúspide publica cada libro en pesos y en dólares; cada precio interno se compara en su misma moneda (ARS contra pesos, USD contra dólares) y el reporte agrega la columna Moneda. Si hay varias ediciones del mismo libro, se compara contra la de título exacto y, entre ellas, la más barata.
+- **Auditoría por decorador**: `habilitar_auditoria` envuelve con `auditar` las operaciones de alta, modificación, baja, reportes y exportación de `LibreriaService`; el scraping y el reporte Excel se registran desde la consola. Solo se audita la operación si terminó sin errores.
+- **Carga desde SQL**: `cargar_datos_desde_sql` ejecuta los archivos `.sql` generados en la migración del Sprint 2, en una única transacción.
+- **Relaciones bidireccionales y cotizaciones compra/venta** (Sprint 2): se mantienen los `back_populates` de los modelos y los dos valores de la API del dólar.
