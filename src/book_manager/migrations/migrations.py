@@ -116,6 +116,9 @@ def _reajustar_secuencias(conn) -> None:
     Al insertar identificadores explícitos desde el CSV, la secuencia de
     PostgreSQL queda por detrás del máximo actual. Se reajusta con ``setval``
     para evitar colisiones en próximas inserciones.
+
+    Args:
+        conn: Conexión activa de SQLAlchemy dentro de una transacción.
     """
     for tabla, columnas in COLUMNAS_POR_TABLA.items():
         if "id" not in columnas:
@@ -126,3 +129,55 @@ def _reajustar_secuencias(conn) -> None:
                 "COALESCE((SELECT MAX(id) FROM {tabla}), 1))".format(tabla=tabla)
             )
         )
+
+
+def cargar_datos_desde_sql(
+    carpeta_sqls: str,
+    conexion: Optional[ConexionDB] = None,
+    solo_si_vacia: bool = True,
+) -> int:
+    """Carga los datos en la base ejecutando las sentencias de los archivos SQL.
+
+    Lee los archivos ``<tabla>.sql`` generados por :func:`migrar_datos` (en el
+    orden de las relaciones definido por ``COLUMNAS_POR_TABLA``) y ejecuta sus
+    sentencias ``INSERT`` dentro de una única transacción.
+
+    Args:
+        carpeta_sqls (str): Carpeta donde se encuentran los archivos ``.sql``.
+        conexion (Optional[ConexionDB]): Conexión existente a reutilizar. Si no
+            se indica se crea una nueva con la configuración del archivo ``.env``.
+        solo_si_vacia (bool): Omite la carga si la base ya contiene datos.
+
+    Returns:
+        int: Cantidad de sentencias ejecutadas (0 si se omitió la carga).
+
+    Raises:
+        FileNotFoundError: Si falta el archivo ``.sql`` de alguna tabla.
+    """
+    origen = Path(carpeta_sqls)
+    if conexion is None:
+        conexion = ConexionDB()
+    conexion.crear_tablas()
+
+    if solo_si_vacia and not _base_vacia(conexion):
+        print("La base de datos ya contiene datos: se omite la carga desde SQL.")
+        return 0
+
+    total = 0
+    with conexion.engine.begin() as conn:
+        for tabla in COLUMNAS_POR_TABLA:
+            ruta_sql = origen / f"{tabla}.sql"
+            if not ruta_sql.exists():
+                raise FileNotFoundError(f"No existe el archivo SQL: {ruta_sql}")
+            sentencias = [
+                linea.strip()
+                for linea in ruta_sql.read_text(encoding="utf-8").splitlines()
+                if linea.strip()
+            ]
+            for sentencia in sentencias:
+                conn.execute(text(sentencia))
+                total += 1
+        if total and conn.dialect.name == "postgresql":
+            _reajustar_secuencias(conn)
+    print(f"Carga desde SQL completada: {total} sentencias ejecutadas.")
+    return total
