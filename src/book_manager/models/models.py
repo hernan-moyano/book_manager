@@ -9,7 +9,9 @@ o de un tipo de cotización a su histórico (``tipo.cotizaciones``).
 """
 from __future__ import annotations
 
-from sqlalchemy import Column, Date, ForeignKey, Integer, Numeric, String
+from datetime import datetime
+
+from sqlalchemy import Column, Date, DateTime, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
@@ -182,3 +184,23 @@ class CotizacionDolar(Base):
             f"fecha={self.fecha.isoformat()}, "
             f"compra={self.valor_compra}, venta={self.valor_venta})"
         )
+
+
+class Auditoria(Base):
+    """Registro de auditoría de una operación del sistema (Sprint 3).
+
+    Attributes:
+        accion (str): Nombre de la operación auditada (por ejemplo ``alta_libro``).
+        fecha (datetime): Fecha y hora en que se realizó la operación.
+        detalles (str): Argumentos y resultado de la operación.
+    """
+
+    __tablename__ = "auditoria"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    accion = Column(String(100), nullable=False)
+    fecha = Column(DateTime, nullable=False, default=datetime.now)
+    detalles = Column(Text, nullable=False)
+
+    def __repr__(self) -> str:
+        return f"{self.fecha:%Y-%m-%d %H:%M:%S} | {self.accion} | {self.detalles}"

@@ -7,6 +7,7 @@ from book_manager.preload_data.preload_data import (
     RUTA_CSV_POR_DEFECTO,
     generar_csv_demo,
 )
+from book_manager.services.auditoria import habilitar_auditoria
 from book_manager.services.services import LibreriaService
 from book_manager.ui.console import ConsolaLibreria
 
@@ -20,7 +21,8 @@ def crear_app(import_default_data: bool = True) -> LibreriaService:
         import_default_data (bool): Migra los CSV a la base de datos si está vacía.
 
     Returns:
-        LibreriaService: El servicio de la librería listo para usar.
+        LibreriaService: El servicio de la librería listo para usar, con la
+            auditoría de operaciones habilitada.
     """
     conexion = ConexionDB()
     conexion.crear_tablas()
@@ -28,7 +30,9 @@ def crear_app(import_default_data: bool = True) -> LibreriaService:
         if not any(RUTA_CSV_POR_DEFECTO.glob("*.csv")):
             generar_csv_demo(str(RUTA_CSV_POR_DEFECTO))
         migrar_datos(str(RUTA_CSV_POR_DEFECTO), str(RUTA_SQL_POR_DEFECTO), conexion)
-    return LibreriaService.crear_con_base_de_datos(conexion)
+    service = LibreriaService.crear_con_base_de_datos(conexion)
+    habilitar_auditoria(service, conexion)
+    return service
 
 
 def main(import_default_data: bool = True, interactive: bool = True) -> None:

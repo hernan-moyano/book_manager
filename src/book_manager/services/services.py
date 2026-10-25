@@ -345,6 +345,7 @@ class LibreriaService:
         precio_service: PrecioService,
         stock_service: StockService,
         cotizacion_service: CotizacionDolarService,
+        conexion: Optional[ConexionDB] = None,
     ) -> None:
         self.genero_service = genero_service
         self.editorial_service = editorial_service
@@ -364,6 +365,14 @@ class LibreriaService:
         self.repo_precios = precio_service.repo
         self.repo_stock = stock_service.repo
         self.repo_cotizaciones = cotizacion_service.repo
+
+        # Conexión con la base de datos (usada por la auditoría del Sprint 3)
+        self._conexion = conexion
+
+    @property
+    def conexion(self) -> Optional[ConexionDB]:
+        """Conexión con la base de datos inyectada (o None si no se indicó)."""
+        return self._conexion
 
     @classmethod
     def crear_con_base_de_datos(
@@ -403,6 +412,7 @@ class LibreriaService:
             precio_service=precio_service,
             stock_service=stock_service,
             cotizacion_service=cotizacion_service,
+            conexion=conexion,
         )
 
     # ------------------------------ CRUD Genero ------------------------------
