@@ -7,6 +7,7 @@ con validación robusta y manejo de errores ante datos mal ingresados.
 from __future__ import annotations
 
 from datetime import date
+from pathlib import Path
 from typing import Callable, List
 
 from book_manager.entities.entities import (
@@ -19,7 +20,12 @@ from book_manager.entities.entities import (
     Stock,
     TipoCotizacion,
 )
+from book_manager.scraper.runner import ejecutar_scraping
+from book_manager.services.auditoria import historial_auditoria, registrar_auditoria
+from book_manager.services.comparacion import ServicioComparacionPrecios
 from book_manager.services.services import LibreriaService, ServicioCotizacionDolar
+
+RUTA_REPORTES = Path(__file__).resolve().parent.parent / "reportes"
 
 
 class ConsolaLibreria:
@@ -472,6 +478,95 @@ class ConsolaLibreria:
         print(f"Precios exportados a: {destino}")
         self._pausa()
 
+    # ---------------------- Menús del Sprint 3 (scraping) --------------------
+    def menu_ejecutar_scraping(self) -> None:
+        """Ejecuta el scraper de Cúspide y genera el CSV de alertas.
+
+        Solicita la diferencia porcentual de alerta, busca los libros del
+        catálogo por título y autor (con respaldo por ISBN), compara los precios
+        internos con los obtenidos y guarda el archivo de alertas. El spider
+        corre en un subproceso (:func:`ejecutar_scraping`) para no chocar con
+        el reactor de Twisted del entorno (Colab/Jupyter o consola).
+        """
+        porcentaje = self._leer_float("Diferencia porcentual para alertar: ")
+        salida = RUTA_REPORTES / "cuspide_resultados.jl"
+        if salida.exists():
+            salida.unlink()
+
+        libros = [
+            {"titulo": libro.titulo, "autor": libro.autor, "isbn": libro.isbn}
+            for libro in self.service.listar_libros()
+        ]
+        if not libros:
+            print("No hay libros cargados para consultar en Cúspide.")
+            self._pausa()
+            return
+        print(f"Se buscarán {len(libros)} libros por título y autor, con ISBN como respaldo.")
+
+        codigo = ejecutar_scraping(libros, salida)
+        if codigo != 0 or not salida.exists():
+            print(f"El scraping no generó resultados (código de salida {codigo}).")
+            self._pausa()
+            return
+
+        comparador = ServicioComparacionPrecios(self.service, RUTA_REPORTES)
+        resultados = comparador.leer_resultados(salida)
+        self._comparacion_sprint3 = comparador.comparar(resultados, porcentaje)
+        ruta_alertas = comparador.guardar_alertas_csv(self._comparacion_sprint3)
+        alertas = sum(1 for fila in self._comparacion_sprint3 if fila["Alerta"])
+        encontrados = {resultado["titulo"] for resultado in resultados}
+        comparados = {fila["Libro"] for fila in self._comparacion_sprint3}
+        print(
+            f"Encontrados en Cúspide: {len(encontrados)} de {len(libros)} libros | "
+            f"Comparados: {len(comparados)} ({len(self._comparacion_sprint3)} precios) | "
+            f"Alertas (>= {porcentaje}%): {alertas}"
+        )
+        no_encontrados = [libro["titulo"] for libro in libros if libro["titulo"] not in encontrados]
+        if no_encontrados:
+            print("No encontrados en Cúspide:", ", ".join(no_encontrados))
+        sin_comparar = sorted(encontrados - comparados)
+        if sin_comparar:
+            print("Encontrados sin precio interno comparable (ARS/USD):", ", ".join(sin_comparar))
+        print(f"Alertas generadas en: {ruta_alertas}")
+        self._auditar(
+            "ejecutar_scraping",
+            f"libros={len(libros)}; encontrados={len(encontrados)}; fichas={len(resultados)}; "
+            f"comparados={len(comparados)}; porcentaje_alerta={porcentaje}; "
+            f"alertas={alertas}; archivo={ruta_alertas}",
+        )
+        self._pausa()
+
+    def menu_generar_reporte_sprint3(self) -> None:
+        """Genera el reporte Excel con la comparación de precios del scraping."""
+        filas = getattr(self, "_comparacion_sprint3", [])
+        if filas:
+            ruta = ServicioComparacionPrecios(self.service, RUTA_REPORTES).generar_excel(filas)
+            print(f"Reporte generado en: {ruta}")
+            self._auditar("generar_reporte", f"filas={len(filas)}; archivo={ruta}")
+        else:
+            print("Ejecute primero el scraping para obtener resultados.")
+        self._pausa()
+
+    def menu_historial_auditoria(self) -> None:
+        """Muestra el historial de operaciones auditadas del sistema."""
+        conexion = self.service.conexion
+        if conexion is None:
+            print("La auditoría no está disponible: el servicio no tiene conexión.")
+            self._pausa()
+            return
+        self._listar("Historial de auditoría", historial_auditoria(conexion))
+        self._pausa()
+
+    def _auditar(self, accion: str, detalles: str) -> None:
+        """Registra en la auditoría una operación que no pasa por la fachada.
+
+        Args:
+            accion (str): Nombre de la acción a registrar.
+            detalles (str): Descripción de la operación realizada.
+        """
+        if self.service.conexion is not None:
+            registrar_auditoria(self.service.conexion, accion, detalles)
+
     # ------------------------------ Menú principal ---------------------------
     def ejecutar(self) -> None:
         """Ejecuta el ciclo del menú principal hasta que el usuario salga."""
@@ -489,6 +584,9 @@ class ConsolaLibreria:
             print("10. Obtener cotizaciones por API")
             print("11. Precios bimonetarios")
             print("12. Exportar precios a CSV")
+            print("13. Ejecutar scraping")
+            print("14. Generar reporte")
+            print("15. Ver historial de auditoría")
             print("0. Salir")
 
             opcion = input("Seleccionar opción: ").strip()
@@ -516,6 +614,12 @@ class ConsolaLibreria:
                 self.menu_precios_bimonetarios()
             elif opcion == "12":
                 self.menu_exportar_precios()
+            elif opcion == "13":
+                self.menu_ejecutar_scraping()
+            elif opcion == "14":
+                self.menu_generar_reporte_sprint3()
+            elif opcion == "15":
+                self.menu_historial_auditoria()
             elif opcion == "0":
                 print("Saliendo...")
                 break
