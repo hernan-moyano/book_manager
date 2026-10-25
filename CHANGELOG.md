@@ -1,3 +1,9 @@
+[Ejercicio 01 - Sprint 3]
+- Rama Sprint_3 creada a partir de Sprint_2; estructura scraper/ (spiders, items, pipelines) y reportes/.
+- requirements.txt con Scrapy, itemloaders, pandas y openpyxl.
+- README.md actualizado con el objetivo y el contexto del Sprint 3.
+- Exclusion de cuspide_resultados.jl (salida cruda del scraper) en .gitignore.
+
 [Correcciones de observaciones - Sprint 2]
 - Ej 01: se quito del repositorio el .env con credenciales (queda solo .env.example)
   y se restauro su exclusion en .gitignore.
