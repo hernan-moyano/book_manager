@@ -1,3 +1,9 @@
+[Ejercicio 04 - Sprint 3]
+- ServicioComparacionPrecios compara cada precio interno con el precio web en su misma moneda (ARS o USD).
+- Generacion de reportes/alertas_precios.csv en cada ejecucion con los libros que superan la diferencia ingresada.
+- Si Cuspide tiene varias ediciones del libro se usa la de titulo exacto y, entre ellas, la mas barata.
+- La fecha del reporte es la fecha de extraccion registrada por el scraper.
+
 [Ejercicio 03 - Sprint 3]
 - CuspideSpider busca solo los libros del catalogo, por titulo (maximo 10 resultados) con respaldo unico por ISBN.
 - Filtro por titulo y autor en la pagina de resultados: solo se descargan las fichas candidatas y el autor se confirma en la ficha (libros homonimos).
