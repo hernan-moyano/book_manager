@@ -348,12 +348,6 @@ class CuspideSpider(scrapy.Spider):
                     ".summary span.woocommerce-Price-amount bdi::text",
                 ),
             )
-            # Precio en dólares: "U$s <span>36,25</span>" debajo del precio en pesos.
-            loader.add_xpath(
-                "precio_usd",
-                "//div[contains(@class, 'summary')]"
-                "//span[starts-with(normalize-space(text()), 'U$s')]/span/text()",
-            )
             # Imagen de portada: img.wp-post-image (CDN livriz).
             loader.add_css(
                 "imagen_url",
