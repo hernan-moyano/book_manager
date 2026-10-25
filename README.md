@@ -17,7 +17,7 @@ La tercera entrega parte del último push del Sprint 2 (persistencia en PostgreS
 ## Opciones del Sprint 3
 
 - **13. Ejecutar scraping**: pide la diferencia porcentual de alerta, consulta Cúspide y genera `reportes/alertas_precios.csv`.
-- **14. Generar reporte**: genera `reportes/reporte_comparacion_precios.xlsx` con Libro, Moneda, Precio interno, Precio web, Diferencia y Fecha de extracción.
+- **14. Generar reporte**: genera `reportes/reporte_comparacion_precios.xlsx` con Libro, Precio interno, Precio web, Diferencia y Fecha de extracción.
 - **15. Ver historial de auditoría**: lista las operaciones registradas, de la más reciente a la más antigua.
 
 ## Decisiones de diseño relevantes
@@ -25,7 +25,7 @@ La tercera entrega parte del último push del Sprint 2 (persistencia en PostgreS
 - **Scraping en subproceso**: el spider se ejecuta con `scraper/runner.py` en un proceso de Python aparte, con su propio reactor de Twisted, para que funcione igual en Colab/Jupyter, en consola y en Windows.
 - **Búsqueda acotada al catálogo**: cada libro se busca por título y, de los 10 primeros resultados, solo se descargan las fichas cuyo título (80 % de las palabras) y autor coinciden con el catálogo, ya que en Cúspide hay libros homónimos de distintos autores. El autor se vuelve a confirmar en la ficha. Si ninguna ficha coincide, se hace una única búsqueda de respaldo por el ISBN normalizado.
 - **Pipelines en cadena**: `ValidarLibroPipeline` descarta las fichas sin precio o repetidas y `JsonLinesPipeline` guarda las válidas; cada ítem registra su fecha de extracción, que es la que muestra el reporte.
-- **Precio web del competidor**: Cúspide publica cada libro en pesos y en dólares; cada precio interno se compara en su misma moneda (ARS contra pesos, USD contra dólares) y el reporte agrega la columna Moneda. Si hay varias ediciones del mismo libro, se compara contra la de título exacto y, entre ellas, la más barata.
+- **Precio web del competidor**: si Cúspide tiene varias ediciones del mismo libro, se compara contra la de título exacto y, entre ellas, la más barata.
 - **Auditoría por decorador**: `habilitar_auditoria` envuelve con `auditar` las operaciones de alta, modificación, baja, reportes y exportación de `LibreriaService`; el scraping y el reporte Excel se registran desde la consola. Solo se audita la operación si terminó sin errores.
 - **Carga desde SQL**: `cargar_datos_desde_sql` ejecuta los archivos `.sql` generados en la migración del Sprint 2, en una única transacción.
 - **Relaciones bidireccionales y cotizaciones compra/venta** (Sprint 2): se mantienen los `back_populates` de los modelos y los dos valores de la API del dólar.
