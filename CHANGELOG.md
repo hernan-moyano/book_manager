@@ -1,3 +1,6 @@
+[Ejercicio 05 - Sprint 3]
+- Reporte Excel reportes/reporte_comparacion_precios.xlsx con Libro, Precio interno, Precio web, Diferencia y Fecha de extraccion.
+
 [Ejercicio 04 - Sprint 3]
 - ServicioComparacionPrecios compara cada precio interno con el precio web en su misma moneda (ARS o USD).
 - Generacion de reportes/alertas_precios.csv en cada ejecucion con los libros que superan la diferencia ingresada.
