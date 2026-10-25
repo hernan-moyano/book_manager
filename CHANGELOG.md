@@ -1,3 +1,7 @@
+[Ejercicio 02 - Sprint 3]
+- Funcion cargar_datos_desde_sql que ejecuta los archivos migrations/sql/<tabla>.sql en una transaccion.
+- Respeta el orden de las relaciones, omite la carga si la base ya tiene datos y reajusta las secuencias en PostgreSQL.
+
 [Ejercicio 01 - Sprint 3]
 - Rama Sprint_3 creada a partir de Sprint_2; estructura scraper/ (spiders, items, pipelines) y reportes/.
 - requirements.txt con Scrapy, itemloaders, pandas y openpyxl.
