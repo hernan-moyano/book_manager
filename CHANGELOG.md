@@ -1,3 +1,7 @@
+[Ejercicio 07 - Sprint 3]
+- Opciones de menu 13 (Ejecutar scraping), 14 (Generar reporte) y 15 (Ver historial de auditoria).
+- La opcion 13 pide la diferencia porcentual de alerta antes de ejecutar el scraper.
+
 [Ejercicio 06 - Sprint 3]
 - Modelo ORM Auditoria (tabla auditoria: accion, fecha y detalles).
 - Decorador auditar aplicado a las operaciones de alta, modificacion, baja, reportes y exportacion de LibreriaService.
