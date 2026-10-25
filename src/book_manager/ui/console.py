@@ -514,25 +514,15 @@ class ConsolaLibreria:
         self._comparacion_sprint3 = comparador.comparar(resultados, porcentaje)
         ruta_alertas = comparador.guardar_alertas_csv(self._comparacion_sprint3)
         alertas = sum(1 for fila in self._comparacion_sprint3 if fila["Alerta"])
-        encontrados = {resultado["titulo"] for resultado in resultados}
-        comparados = {fila["Libro"] for fila in self._comparacion_sprint3}
         print(
-            f"Encontrados en Cúspide: {len(encontrados)} de {len(libros)} libros | "
-            f"Comparados: {len(comparados)} ({len(self._comparacion_sprint3)} precios) | "
+            f"Libros encontrados: {len(self._comparacion_sprint3)} | "
             f"Alertas (>= {porcentaje}%): {alertas}"
         )
-        no_encontrados = [libro["titulo"] for libro in libros if libro["titulo"] not in encontrados]
-        if no_encontrados:
-            print("No encontrados en Cúspide:", ", ".join(no_encontrados))
-        sin_comparar = sorted(encontrados - comparados)
-        if sin_comparar:
-            print("Encontrados sin precio interno comparable (ARS/USD):", ", ".join(sin_comparar))
         print(f"Alertas generadas en: {ruta_alertas}")
         self._auditar(
             "ejecutar_scraping",
-            f"libros={len(libros)}; encontrados={len(encontrados)}; fichas={len(resultados)}; "
-            f"comparados={len(comparados)}; porcentaje_alerta={porcentaje}; "
-            f"alertas={alertas}; archivo={ruta_alertas}",
+            f"libros={len(libros)}; encontrados={len(resultados)}; "
+            f"porcentaje_alerta={porcentaje}; alertas={alertas}; archivo={ruta_alertas}",
         )
         self._pausa()
 
