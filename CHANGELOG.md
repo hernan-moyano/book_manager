@@ -1,3 +1,11 @@
+[Ejercicio 03 - Sprint 3]
+- CuspideSpider busca solo los libros del catalogo, por titulo (maximo 10 resultados) con respaldo unico por ISBN.
+- Filtro por titulo y autor en la pagina de resultados: solo se descargan las fichas candidatas y el autor se confirma en la ficha (libros homonimos).
+- Extraccion de precio en pesos y en dolares, url de la imagen, formas de pago y descripcion detallada de cada ficha.
+- ItemLoader (LibroCuspideLoader) con procesadores de limpieza y conversion de precio, y fecha de extraccion en cada item.
+- Cadena de pipelines: ValidarLibroPipeline descarta fichas sin precio o repetidas y JsonLinesPipeline guarda reportes/cuspide_resultados.jl.
+- Ejecucion del spider en un subproceso (runner.py) para no chocar con el reactor de Twisted en Colab.
+
 [Ejercicio 02 - Sprint 3]
 - Funcion cargar_datos_desde_sql que ejecuta los archivos migrations/sql/<tabla>.sql en una transaccion.
 - Respeta el orden de las relaciones, omite la carga si la base ya tiene datos y reajusta las secuencias en PostgreSQL.
