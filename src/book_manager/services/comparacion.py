@@ -4,6 +4,9 @@ Define :class:`ServicioComparacionPrecios`, que cruza los resultados del
 scraper de Cúspide con el catálogo interno, calcula la diferencia de
 precios, genera el archivo de alertas CSV (Ejercicio 04) y el reporte en
 Excel (Ejercicio 05) dentro de la carpeta ``reportes``.
+
+Cúspide publica cada libro en pesos y en dólares, por lo que cada precio
+interno se compara en su propia moneda (ARS o USD).
 """
 from __future__ import annotations
 
@@ -17,8 +20,12 @@ from typing import Any, Dict, List, Optional, Set
 
 import pandas as pd
 
+# Moneda del precio interno -> campo del ítem del scraper con el precio web.
+CAMPOS_PRECIO_WEB = {"ARS": "precio", "USD": "precio_usd"}
+
 CAMPOS_ALERTAS = [
     "Libro",
+    "Moneda",
     "Precio interno",
     "Precio web",
     "Diferencia",
@@ -26,7 +33,7 @@ CAMPOS_ALERTAS = [
     "Fecha de extracción",
     "Alerta",
 ]
-COLUMNAS_EXCEL = ["Libro", "Precio interno", "Precio web", "Diferencia", "Fecha de extracción"]
+COLUMNAS_EXCEL = ["Libro", "Moneda", "Precio interno", "Precio web", "Diferencia", "Fecha de extracción"]
 
 
 def normalizar_isbn(valor: Optional[str]) -> str:
@@ -59,7 +66,7 @@ class ServicioComparacionPrecios:
     """Servicio que compara el precio interno con el precio web y reporta.
 
     Recibe el servicio de la librería (para acceder al catálogo y a los
-    precios internos en ARS) y la carpeta donde se escriben los reportes.
+    precios internos en ARS y USD) y la carpeta donde se escriben los reportes.
     """
 
     def __init__(self, libreria_service: Any, reportes_dir: "str | Path") -> None:
@@ -75,45 +82,56 @@ class ServicioComparacionPrecios:
         self.reportes_dir.mkdir(parents=True, exist_ok=True)
 
     @staticmethod
-    def _elegir_resultado(libro: Any, candidatos: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Elige la ficha de Cúspide que representa al libro del catálogo.
+    def _elegir_resultado(
+        libro: Any, candidatos: List[Dict[str, Any]], campo: str
+    ) -> Optional[Dict[str, Any]]:
+        """Elige la ficha de Cúspide que representa al libro en una moneda.
 
         Cúspide puede tener varias ediciones del mismo libro: se prefieren las
         de título exacto (no "Practicando el poder del ahora" para "El poder
-        del ahora") y, entre ellas, la oferta más barata.
+        del ahora") y, entre ellas, la oferta más barata en esa moneda.
 
         Args:
             libro (Any): Libro del catálogo interno.
             candidatos (List[Dict[str, Any]]): Ítems del scraper de ese libro.
+            campo (str): Campo del ítem con el precio web (``precio`` o
+                ``precio_usd``).
 
         Returns:
-            Dict[str, Any]: El ítem elegido.
+            Optional[Dict[str, Any]]: El ítem elegido, o None si ninguna ficha
+                informa el precio en esa moneda.
         """
+        con_precio = [c for c in candidatos if c.get(campo)]
         palabras = normalizar_palabras(libro.titulo)
-        exactos = [c for c in candidatos if normalizar_palabras(c.get("titulo_web")) == palabras]
-        return min(exactos or candidatos, key=lambda candidato: float(candidato["precio"]))
+        exactos = [c for c in con_precio if normalizar_palabras(c.get("titulo_web")) == palabras]
+        opciones = exactos or con_precio
+        if not opciones:
+            return None
+        return min(opciones, key=lambda candidato: float(candidato[campo]))
 
     def comparar(
         self, resultados: List[Dict[str, Any]], porcentaje_alerta: float
     ) -> List[Dict[str, Any]]:
         """Cruza los resultados del scraper con el catálogo y calcula diferencias.
 
+        Cada precio interno en ARS se compara con el precio web en pesos y
+        cada precio interno en USD con el precio web en dólares.
+
         Args:
             resultados (List[Dict[str, Any]]): Ítems extraídos por el scraper
-                (con ``titulo``, ``isbn_catalogo`` y ``precio``).
+                (con ``titulo``, ``isbn_catalogo``, ``precio`` y ``precio_usd``).
             porcentaje_alerta (float): Diferencia porcentual (en valor
                 absoluto) a partir de la cual se marca la alerta.
 
         Returns:
-            List[Dict[str, Any]]: Una fila por libro del catálogo encontrado
+            List[Dict[str, Any]]: Una fila por libro y moneda comparables
                 (elegida con :meth:`_elegir_resultado`) con las claves de
                 ``CAMPOS_ALERTAS``.
         """
-        precios = {
-            precio.libro.id: float(precio.monto)
-            for precio in self.service.listar_precios()
-            if precio.moneda.codigo == "ARS"
-        }
+        precios: Dict[int, Dict[str, float]] = {}
+        for precio in self.service.listar_precios():
+            if precio.moneda.codigo in CAMPOS_PRECIO_WEB:
+                precios.setdefault(precio.libro.id, {})[precio.moneda.codigo] = float(precio.monto)
         catalogo = self.service.listar_libros()
         libros = {libro.titulo.casefold(): libro for libro in catalogo}
         libros_por_isbn = {normalizar_isbn(libro.isbn): libro for libro in catalogo}
@@ -124,31 +142,35 @@ class ServicioComparacionPrecios:
             libro = libros_por_isbn.get(isbn) or libros.get(
                 str(resultado.get("titulo", "")).casefold()
             )
-            if libro is None or not resultado.get("precio") or libro.id not in precios:
+            if libro is None or libro.id not in precios:
                 continue
             por_libro.setdefault(libro.id, (libro, []))[1].append(resultado)
 
         filas: List[Dict[str, Any]] = []
         for libro, candidatos in por_libro.values():
-            elegido = self._elegir_resultado(libro, candidatos)
-            precio_web = float(elegido["precio"])
-            fecha = elegido.get("fecha_extraccion") or datetime.now().isoformat(
-                timespec="seconds"
-            )
-            interno = precios[libro.id]
-            diferencia = precio_web - interno
-            porcentaje = diferencia / interno * 100 if interno else 0.0
-            filas.append(
-                {
-                    "Libro": libro.titulo,
-                    "Precio interno": interno,
-                    "Precio web": precio_web,
-                    "Diferencia": diferencia,
-                    "Diferencia %": porcentaje,
-                    "Fecha de extracción": fecha,
-                    "Alerta": abs(porcentaje) >= porcentaje_alerta,
-                }
-            )
+            for moneda, interno in precios[libro.id].items():
+                campo = CAMPOS_PRECIO_WEB[moneda]
+                elegido = self._elegir_resultado(libro, candidatos, campo)
+                if elegido is None:
+                    continue
+                precio_web = float(elegido[campo])
+                fecha = elegido.get("fecha_extraccion") or datetime.now().isoformat(
+                    timespec="seconds"
+                )
+                diferencia = precio_web - interno
+                porcentaje = diferencia / interno * 100 if interno else 0.0
+                filas.append(
+                    {
+                        "Libro": libro.titulo,
+                        "Moneda": moneda,
+                        "Precio interno": interno,
+                        "Precio web": precio_web,
+                        "Diferencia": diferencia,
+                        "Diferencia %": porcentaje,
+                        "Fecha de extracción": fecha,
+                        "Alerta": abs(porcentaje) >= porcentaje_alerta,
+                    }
+                )
         return filas
 
     def guardar_alertas_csv(self, filas: List[Dict[str, Any]]) -> Path:
@@ -170,8 +192,8 @@ class ServicioComparacionPrecios:
     def generar_excel(self, filas: List[Dict[str, Any]]) -> Path:
         """Genera el reporte Excel con la comparación de precios.
 
-        Columnas: Libro, Precio interno, Precio web, Diferencia y Fecha de
-        extracción.
+        Columnas: Libro, Moneda, Precio interno, Precio web, Diferencia y
+        Fecha de extracción.
 
         Args:
             filas (List[Dict[str, Any]]): Filas producidas por :meth:`comparar`.

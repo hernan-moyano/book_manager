@@ -58,7 +58,8 @@ class LibroCuspideItem(scrapy.Item):
         autor_web: Autor informado por Cúspide.
         isbn_web: ISBN informado por Cúspide.
         url: URL de la ficha del libro en Cúspide.
-        precio: Precio de venta informado en la web (float).
+        precio: Precio de venta en pesos (ARS) informado en la web (float).
+        precio_usd: Precio de venta en dólares (U$s) informado en la web (float).
         imagen_url: URL de la imagen de portada.
         formas_pago: Formas de pago y precio informadas en la ficha.
         descripcion: Descripción detallada del libro.
@@ -74,6 +75,7 @@ class LibroCuspideItem(scrapy.Item):
     isbn_web = scrapy.Field()
     url = scrapy.Field()
     precio = scrapy.Field()
+    precio_usd = scrapy.Field()
     imagen_url = scrapy.Field()
     formas_pago = scrapy.Field()
     descripcion = scrapy.Field()
@@ -88,3 +90,4 @@ class LibroCuspideLoader(ItemLoader):
     formas_pago_out = Join(" | ")
     descripcion_out = Join(" ")
     precio_in = MapCompose(limpiar_texto, convertir_precio)
+    precio_usd_in = MapCompose(limpiar_texto, convertir_precio)
