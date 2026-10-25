@@ -1,3 +1,8 @@
+[Ejercicio 06 - Sprint 3]
+- Modelo ORM Auditoria (tabla auditoria: accion, fecha y detalles).
+- Decorador auditar aplicado a las operaciones de alta, modificacion, baja, reportes y exportacion de LibreriaService.
+- main habilita la auditoria al crear la aplicacion; el scraping y el reporte Excel tambien se auditan.
+
 [Ejercicio 05 - Sprint 3]
 - Reporte Excel reportes/reporte_comparacion_precios.xlsx con Libro, Precio interno, Precio web, Diferencia y Fecha de extraccion.
 
